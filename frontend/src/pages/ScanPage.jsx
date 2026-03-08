@@ -54,10 +54,10 @@ export default function ScanPage() {
     ? [...locationShelves, locationForm.shelf]
     : locationShelves;
 
-  // Derive bins (containers) on selected shelf, or shelfless bins when no shelf selected
+  // Derive bins: if a shelf is selected show bins on that shelf, otherwise show all bins at the location
   const binsOnShelf = locationForm.shelf
     ? containers.filter(c => c.shelf === locationForm.shelf)
-    : containers.filter(c => !c.shelf);
+    : containers;
 
   // Sync container_id when shelf/bin changes
   useEffect(() => {
@@ -66,7 +66,7 @@ export default function ScanPage() {
       return;
     }
     const match = containers.find(c =>
-      (c.shelf || '') === (locationForm.shelf || '') && (c.name === locationForm.bin || c.bin === locationForm.bin)
+      (c.name === locationForm.bin || c.bin === locationForm.bin)
     );
     setLocationForm(f => ({ ...f, container_id: match ? String(match.id) : '' }));
   }, [locationForm.shelf, locationForm.bin, containers]);

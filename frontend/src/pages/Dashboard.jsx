@@ -57,18 +57,25 @@ export default function Dashboard() {
             <div className="empty-text">No items yet — tap Scan to add your first item</div>
           </div>
         )}
-        {recent.map(item => (
-          <div key={item.id} className="item-card" onClick={() => navigate('/items')}>
-            <div className="item-thumb">{item.image_url ? <img src={item.image_url} alt="" style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:8}} /> : '📦'}</div>
-            <div className="item-info">
-              <div className="item-name">{item.name}</div>
-              <div className="item-loc">
-                {[item.location_name, item.container_name, item.shelf && `Shelf ${item.shelf}`, item.bin && `Bin ${item.bin}`].filter(Boolean).join(' › ')}
+        {recent.map(item => {
+          const detailPath = item.container_id
+            ? `/containers/${item.container_id}`
+            : item.location_id
+              ? `/locations/${item.location_id}`
+              : '/items';
+          return (
+            <div key={item.id} className="item-card" onClick={() => navigate(detailPath)}>
+              <div className="item-thumb">{item.image_url ? <img src={item.image_url} alt="" style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:8}} /> : '📦'}</div>
+              <div className="item-info">
+                <div className="item-name">{item.name}</div>
+                <div className="item-loc">
+                  {[item.location_name, item.container_name, item.shelf && `Shelf ${item.shelf}`, item.bin && `Bin ${item.bin}`].filter(Boolean).join(' › ')}
+                </div>
               </div>
+              <div className="item-qty">×{item.quantity}</div>
             </div>
-            <div className="item-qty">×{item.quantity}</div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
