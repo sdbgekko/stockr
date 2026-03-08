@@ -235,9 +235,22 @@ app.get('/api/items/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Auto-add a new shelf to a location if it doesn't exist yet
+async function ensureShelfOnLocation(locationId, shelfName) {
+  if (!locationId || !shelfName) return;
+  const loc = await pool.query('SELECT shelves FROM locations WHERE id=$1', [locationId]);
+  if (!loc.rows.length) return;
+  const existing = (loc.rows[0].shelves || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (!existing.includes(shelfName.trim())) {
+    const updated = [...existing, shelfName.trim()].join(', ');
+    await pool.query('UPDATE locations SET shelves=$1 WHERE id=$2', [updated, locationId]);
+  }
+}
+
 app.post('/api/items', async (req, res) => {
   const { name, description, quantity, unit, container_id, location_id, shelf, bin, image_url, ai_labels, barcode, tags } = req.body;
   try {
+    if (shelf && location_id) await ensureShelfOnLocation(location_id, shelf);
     const result = await pool.query(
       `INSERT INTO items (name, description, quantity, unit, container_id, location_id, shelf, bin, image_url, ai_labels, barcode, tags)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
@@ -251,6 +264,7 @@ app.post('/api/items', async (req, res) => {
 app.put('/api/items/:id', async (req, res) => {
   const { name, description, quantity, unit, container_id, location_id, shelf, bin, image_url, ai_labels, barcode, tags } = req.body;
   try {
+    if (shelf && location_id) await ensureShelfOnLocation(location_id, shelf);
     const result = await pool.query(
       `UPDATE items SET name=$1, description=$2, quantity=$3, unit=$4, container_id=$5,
        location_id=$6, shelf=$7, bin=$8, image_url=$9, ai_labels=$10, barcode=$11, tags=$12, updated_at=NOW()
