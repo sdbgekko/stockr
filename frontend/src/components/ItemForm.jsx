@@ -29,11 +29,34 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
     if (form.location_id) {
       getContainers({ location_id: form.location_id }).then(setContainers).catch(console.error);
     } else {
-      getContainers().then(setContainers).catch(console.error);
+      setContainers([]);
     }
   }, [form.location_id]);
 
-  // Sync shelf/bin from container when containers load (for editing existing items)
+  // Derive available shelves from selected location
+  const selectedLocation = locations.find(l => String(l.id) === String(form.location_id));
+  const availableShelves = selectedLocation?.shelves
+    ? selectedLocation.shelves.split(',').map(s => s.trim()).filter(Boolean)
+    : [];
+
+  // Derive bins (containers) on the selected shelf
+  const binsOnShelf = form.shelf
+    ? containers.filter(c => c.shelf === form.shelf)
+    : [];
+
+  // Sync container_id when shelf/bin selection changes
+  useEffect(() => {
+    if (!form.bin) {
+      if (form.container_id) setForm(f => ({ ...f, container_id: '' }));
+      return;
+    }
+    const match = containers.find(c =>
+      c.shelf === form.shelf && (c.name === form.bin || c.bin === form.bin)
+    );
+    setForm(f => ({ ...f, container_id: match ? String(match.id) : '' }));
+  }, [form.shelf, form.bin, containers]);
+
+  // Populate shelf/bin from container when editing existing items
   useEffect(() => {
     if (form.container_id && containers.length > 0) {
       const selected = containers.find(c => String(c.id) === String(form.container_id));
@@ -42,17 +65,6 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
       }
     }
   }, [containers]);
-
-  // Reverse sync: auto-select container when shelf/bin match
-  useEffect(() => {
-    if (form.container_id || !form.shelf || !form.bin || containers.length === 0) return;
-    const match = containers.find(c =>
-      c.shelf === form.shelf && (c.bin === form.bin || c.name === form.bin)
-    );
-    if (match) {
-      setForm(f => ({ ...f, container_id: String(match.id) }));
-    }
-  }, [form.shelf, form.bin, containers]);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -64,7 +76,6 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
       const result = await uploadImage(file);
       setImageUrl(result.image_url);
     } catch (err) {
-      // Fall back to local preview if upload fails
       setImageUrl(URL.createObjectURL(file));
     } finally {
       setUploading(false);
@@ -101,7 +112,7 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
             style={{ position: 'absolute', bottom: 8, right: 8, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
             onClick={() => fileRef.current?.click()}
           >
-            {uploading ? 'Uploading…' : 'Change Photo'}
+            {uploading ? 'Uploading\u2026' : 'Change Photo'}
           </button>
         </div>
       ) : (
@@ -111,7 +122,7 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
           onClick={() => fileRef.current?.click()}
           disabled={uploading}
         >
-          {uploading ? 'Uploading…' : '📷 Add Photo'}
+          {uploading ? 'Uploading\u2026' : '\ud83d\udcf7 Add Photo'}
         </button>
       )}
 
@@ -122,7 +133,7 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
 
       <div className="form-group">
         <label className="form-label">Description</label>
-        <textarea className="form-textarea" value={form.description} onChange={e => set('description', e.target.value)} placeholder="Optional details…" rows={2} />
+        <textarea className="form-textarea" value={form.description} onChange={e => set('description', e.target.value)} placeholder="Optional details\u2026" rows={2} />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -140,39 +151,34 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
 
       <div className="form-group">
         <label className="form-label">Location</label>
-        <select className="form-select" value={form.location_id} onChange={e => set('location_id', e.target.value)}>
-          <option value="">— No location —</option>
+        <select className="form-select" value={form.location_id} onChange={e => { set('location_id', e.target.value); set('shelf', ''); set('bin', ''); set('container_id', ''); }}>
+          <option value="">\u2014 No location \u2014</option>
           {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-        </select>
-      </div>
-
-      <div className="form-group">
-        <label className="form-label">Container / Bin</label>
-        <select className="form-select" value={form.container_id} onChange={e => {
-          const cid = e.target.value;
-          set('container_id', cid);
-          const selected = containers.find(c => String(c.id) === cid);
-          if (selected) {
-            set('shelf', selected.shelf || '');
-            set('bin', selected.bin || selected.name || '');
-          } else {
-            set('shelf', '');
-            set('bin', '');
-          }
-        }}>
-          <option value="">— No container —</option>
-          {containers.map(c => <option key={c.id} value={c.id}>{c.name}{c.shelf ? ` · Shelf ${c.shelf}` : ''}{c.bin ? ` · Bin ${c.bin}` : ''}</option>)}
         </select>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div className="form-group">
           <label className="form-label">Shelf</label>
-          <input className="form-input" value={form.shelf} onChange={e => set('shelf', e.target.value)} placeholder={form.container_id ? '' : 'A, B, 1, 2…'} disabled={!!form.container_id} style={form.container_id ? { opacity: 0.6 } : {}} />
+          {availableShelves.length > 0 ? (
+            <select className="form-select" value={form.shelf} onChange={e => { set('shelf', e.target.value); set('bin', ''); set('container_id', ''); }}>
+              <option value="">\u2014 None \u2014</option>
+              {availableShelves.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          ) : (
+            <input className="form-input" value={form.shelf} onChange={e => { set('shelf', e.target.value); set('bin', ''); set('container_id', ''); }} placeholder={form.location_id ? 'Type shelf name' : 'Select location first'} />
+          )}
         </div>
         <div className="form-group">
           <label className="form-label">Bin</label>
-          <input className="form-input" value={form.bin} onChange={e => set('bin', e.target.value)} placeholder={form.container_id ? '' : '01, 02…'} disabled={!!form.container_id} style={form.container_id ? { opacity: 0.6 } : {}} />
+          {binsOnShelf.length > 0 ? (
+            <select className="form-select" value={form.bin} onChange={e => set('bin', e.target.value)}>
+              <option value="">\u2014 None \u2014</option>
+              {binsOnShelf.map(c => <option key={c.id} value={c.bin || c.name}>{c.name}</option>)}
+            </select>
+          ) : (
+            <input className="form-input" value={form.bin} onChange={e => set('bin', e.target.value)} placeholder={form.shelf ? 'Type bin name' : ''} />
+          )}
         </div>
       </div>
 
@@ -183,13 +189,13 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
 
       <div className="form-group">
         <label className="form-label">Tags (comma separated)</label>
-        <input className="form-input" value={form.tags} onChange={e => set('tags', e.target.value)} placeholder="tools, hardware, misc…" />
+        <input className="form-input" value={form.tags} onChange={e => set('tags', e.target.value)} placeholder="tools, hardware, misc\u2026" />
       </div>
 
       <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
         <button className="btn btn-ghost" onClick={onCancel} style={{ flex: 1 }}>Cancel</button>
         <button className="btn btn-primary" onClick={handleSave} disabled={saving || !form.name.trim()} style={{ flex: 2 }}>
-          {saving ? 'Saving…' : '✓ Save Item'}
+          {saving ? 'Saving\u2026' : '\u2713 Save Item'}
         </button>
       </div>
     </div>
