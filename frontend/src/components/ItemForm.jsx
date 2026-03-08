@@ -33,6 +33,16 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
     }
   }, [form.location_id]);
 
+  // Sync shelf/bin from container when containers load (for editing existing items)
+  useEffect(() => {
+    if (form.container_id && containers.length > 0) {
+      const selected = containers.find(c => String(c.id) === String(form.container_id));
+      if (selected) {
+        setForm(f => ({ ...f, shelf: selected.shelf || '', bin: selected.bin || '' }));
+      }
+    }
+  }, [containers]);
+
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const handlePhotoUpload = async (e) => {
