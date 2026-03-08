@@ -19,17 +19,9 @@ function Nav() {
         <span className="nav-icon">⬡</span>
         <span>Overview</span>
       </NavLink>
-      <NavLink to="/items" className={({isActive}) => isActive ? 'nav-item active' : 'nav-item'}>
-        <span className="nav-icon">≡</span>
-        <span>Items</span>
-      </NavLink>
       <NavLink to="/scan" className={({isActive}) => isActive ? 'nav-item active' : 'nav-item'}>
         <span className="nav-icon scan-btn">◎</span>
         <span>Scan</span>
-      </NavLink>
-      <NavLink to="/containers" className={({isActive}) => isActive ? 'nav-item active' : 'nav-item'}>
-        <span className="nav-icon">▣</span>
-        <span>Bins</span>
       </NavLink>
       <NavLink to="/settings" className={({isActive}) => isActive ? 'nav-item active' : 'nav-item'}>
         <span className="nav-icon">⚙</span>

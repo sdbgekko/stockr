@@ -9,8 +9,15 @@ export default function Dashboard() {
 
   useEffect(() => {
     getStats().then(setStats).catch(console.error);
-    getItems().then(items => setRecent(items.slice(0, 5))).catch(console.error);
+    getItems().then(items => setRecent(items.slice(0, 8))).catch(console.error);
   }, []);
+
+  const navCards = [
+    { key: 'locations', value: stats?.locations, label: 'Locations', icon: '◈', path: '/locations' },
+    { key: 'shelves', value: stats?.shelves, label: 'Shelves', icon: '▧', path: '/locations' },
+    { key: 'containers', value: stats?.containers, label: 'Bins', icon: '▣', path: '/containers' },
+    { key: 'items', value: stats?.items, label: 'Items', icon: '≡', path: '/items' },
+  ];
 
   return (
     <div className="page">
@@ -25,22 +32,19 @@ export default function Dashboard() {
       </div>
 
       <div className="stat-grid">
-        <div className="stat-card">
-          <div className="stat-value">{stats?.items ?? '—'}</div>
-          <div className="stat-label">Item Types</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-value">{stats?.totalQuantity ?? '—'}</div>
-          <div className="stat-label">Total Units</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-value">{stats?.containers ?? '—'}</div>
-          <div className="stat-label">Bins / Boxes</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-value">{stats?.locations ?? '—'}</div>
-          <div className="stat-label">Locations</div>
-        </div>
+        {navCards.map(card => (
+          <div
+            key={card.key}
+            className="stat-card stat-card-nav"
+            onClick={() => navigate(card.path)}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div className="stat-value">{card.value ?? '—'}</div>
+              <span style={{ fontSize: 20, color: 'var(--text3)', opacity: 0.5 }}>›</span>
+            </div>
+            <div className="stat-label">{card.icon} {card.label}</div>
+          </div>
+        ))}
       </div>
 
       <div style={{ padding: '0 16px 8px' }}>
