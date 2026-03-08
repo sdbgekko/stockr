@@ -19,7 +19,11 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
   const [saving, setSaving] = useState(false);
   const [imageUrl, setImageUrl] = useState(capturedImage || initial.image_url || null);
   const [uploading, setUploading] = useState(false);
+  const [newShelfMode, setNewShelfMode] = useState(false);
+  const [newBinMode, setNewBinMode] = useState(false);
   const fileRef = useRef(null);
+  const newShelfRef = useRef(null);
+  const newBinRef = useRef(null);
 
   useEffect(() => {
     getLocations().then(setLocations).catch(console.error);
@@ -151,7 +155,7 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
 
       <div className="form-group">
         <label className="form-label">Location</label>
-        <select className="form-select" value={form.location_id} onChange={e => { set('location_id', e.target.value); set('shelf', ''); set('bin', ''); set('container_id', ''); }}>
+        <select className="form-select" value={form.location_id} onChange={e => { set('location_id', e.target.value); set('shelf', ''); set('bin', ''); set('container_id', ''); setNewShelfMode(false); setNewBinMode(false); }}>
           <option value="">— No location —</option>
           {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
         </select>
@@ -160,24 +164,54 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div className="form-group">
           <label className="form-label">Shelf</label>
-          {availableShelves.length > 0 ? (
-            <select className="form-select" value={form.shelf} onChange={e => { set('shelf', e.target.value); set('bin', ''); set('container_id', ''); }}>
+          {availableShelves.length > 0 && !newShelfMode ? (
+            <select className="form-select" value={form.shelf} onChange={e => {
+              if (e.target.value === '__new__') {
+                setNewShelfMode(true);
+                set('shelf', ''); set('bin', ''); set('container_id', '');
+                setNewBinMode(false);
+                setTimeout(() => newShelfRef.current?.focus(), 50);
+              } else {
+                set('shelf', e.target.value); set('bin', ''); set('container_id', '');
+                setNewBinMode(false);
+              }
+            }}>
               <option value="">— None —</option>
               {availableShelves.map(s => <option key={s} value={s}>{s}</option>)}
+              <option value="__new__">+ New shelf</option>
             </select>
           ) : (
-            <input className="form-input" value={form.shelf} onChange={e => { set('shelf', e.target.value); set('bin', ''); set('container_id', ''); }} placeholder={form.location_id ? 'Type shelf name' : 'Select location first'} />
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input ref={newShelfRef} className="form-input" style={{ flex: 1 }} value={form.shelf} onChange={e => { set('shelf', e.target.value); set('bin', ''); set('container_id', ''); setNewBinMode(false); }} placeholder="New shelf name" />
+              {availableShelves.length > 0 && (
+                <button type="button" className="btn-icon" style={{ flexShrink: 0 }} onClick={() => { setNewShelfMode(false); set('shelf', ''); set('bin', ''); set('container_id', ''); }}>✕</button>
+              )}
+            </div>
           )}
         </div>
         <div className="form-group">
           <label className="form-label">Bin</label>
-          {binsOnShelf.length > 0 ? (
-            <select className="form-select" value={form.bin} onChange={e => set('bin', e.target.value)}>
+          {binsOnShelf.length > 0 && !newBinMode ? (
+            <select className="form-select" value={form.bin} onChange={e => {
+              if (e.target.value === '__new__') {
+                setNewBinMode(true);
+                set('bin', ''); set('container_id', '');
+                setTimeout(() => newBinRef.current?.focus(), 50);
+              } else {
+                set('bin', e.target.value);
+              }
+            }}>
               <option value="">— None —</option>
               {binsOnShelf.map(c => <option key={c.id} value={c.bin || c.name}>{c.name}</option>)}
+              <option value="__new__">+ New bin</option>
             </select>
           ) : (
-            <input className="form-input" value={form.bin} onChange={e => set('bin', e.target.value)} placeholder={form.shelf ? 'Type bin name' : ''} />
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input ref={newBinRef} className="form-input" style={{ flex: 1 }} value={form.bin} onChange={e => set('bin', e.target.value)} placeholder={form.shelf ? 'New bin name' : ''} />
+              {binsOnShelf.length > 0 && (
+                <button type="button" className="btn-icon" style={{ flexShrink: 0 }} onClick={() => { setNewBinMode(false); set('bin', ''); set('container_id', ''); }}>✕</button>
+              )}
+            </div>
           )}
         </div>
       </div>
