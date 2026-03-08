@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { getLocations, createLocation, updateLocation, deleteLocation, uploadImage } from '../utils/api';
+import { getLocations, getContainers, createLocation, updateLocation, deleteLocation, uploadImage } from '../utils/api';
 import QRModal from '../components/QRModal';
 import SwipeableCard from '../components/SwipeableCard';
 
@@ -160,11 +160,15 @@ const TrashIcon = () => (
 
 export default function LocationsPage() {
   const [locations, setLocations] = useState([]);
+  const [containers, setContainers] = useState([]);
   const [modal, setModal] = useState(null);
   const [qrModal, setQrModal] = useState(null);
   const [openSwipeId, setOpenSwipeId] = useState(null);
 
-  const load = () => getLocations().then(setLocations).catch(console.error);
+  const load = () => {
+    getLocations().then(setLocations).catch(console.error);
+    getContainers().then(setContainers).catch(console.error);
+  };
   useEffect(() => { load(); }, []);
 
   const handleSave = async (data) => {
@@ -233,19 +237,32 @@ export default function LocationsPage() {
                   {shelves.length > 0 && (
                     <div>
                       <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Shelves</div>
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                        {shelves.map(s => (
-                          <button
-                            key={s}
-                            className="badge badge-purple"
-                            style={{ cursor: 'pointer', border: 'none', background: 'rgba(124,58,237,0.2)', display: 'flex', alignItems: 'center', gap: 4 }}
-                            onClick={(e) => { e.stopPropagation(); setQrModal({ data: `stockr://location/${l.id}/shelf/${s}`, title: `${l.name} — Shelf ${s}` }); }}
-                          >
-                            {shelfImages[s] && <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', display: 'inline-block' }} />}
-                            {s} ⬡
-                          </button>
-                        ))}
-                      </div>
+                      {shelves.map(s => {
+                        const binsOnShelf = containers.filter(c => String(c.location_id) === String(l.id) && c.shelf === s);
+                        return (
+                          <div key={s} style={{ marginBottom: 8 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                              <button
+                                className="badge badge-purple"
+                                style={{ cursor: 'pointer', border: 'none', background: 'rgba(124,58,237,0.2)', display: 'flex', alignItems: 'center', gap: 4 }}
+                                onClick={(e) => { e.stopPropagation(); setQrModal({ data: `stockr://location/${l.id}/shelf/${s}`, title: `${l.name} — Shelf ${s}` }); }}
+                              >
+                                {shelfImages[s] && <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', display: 'inline-block' }} />}
+                                {s} ⬡
+                              </button>
+                            </div>
+                            {binsOnShelf.length > 0 && (
+                              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', paddingLeft: 8 }}>
+                                {binsOnShelf.map(c => (
+                                  <span key={c.id} className="badge badge-green" style={{ fontSize: 10 }}>
+                                    {c.name}{c.item_count > 0 ? ` (${c.item_count})` : ''}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
