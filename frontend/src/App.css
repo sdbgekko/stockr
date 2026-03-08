@@ -545,7 +545,7 @@ body {
 .photo-viewer-next { right: 12px; }
 .photo-viewer-actions {
   position: absolute;
-  bottom: calc(var(--nav-h) + 24px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
   display: flex;
   align-items: center;
   gap: 16px;

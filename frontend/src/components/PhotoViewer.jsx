@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import Portal from './Portal';
 
 export default function PhotoViewer({ images, startIndex, onClose, onDelete }) {
   const [currentIndex, setCurrentIndex] = useState(startIndex);
@@ -52,42 +53,44 @@ export default function PhotoViewer({ images, startIndex, onClose, onDelete }) {
   if (images.length === 0) return null;
 
   return (
-    <div className="photo-viewer"
-      onClick={onClose}
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-    >
-      <button className="photo-viewer-close" onClick={onClose}>✕</button>
+    <Portal>
+      <div className="photo-viewer"
+        onClick={onClose}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
+        <button className="photo-viewer-close" onClick={onClose}>✕</button>
 
-      {/* Previous arrow */}
-      {currentIndex > 0 && (
-        <button className="photo-viewer-nav photo-viewer-prev"
-          onClick={(e) => { e.stopPropagation(); goPrev(); }}>
-          ‹
-        </button>
-      )}
-
-      <img src={images[currentIndex]} alt="" onClick={e => e.stopPropagation()} />
-
-      {/* Next arrow */}
-      {currentIndex < images.length - 1 && (
-        <button className="photo-viewer-nav photo-viewer-next"
-          onClick={(e) => { e.stopPropagation(); goNext(); }}>
-          ›
-        </button>
-      )}
-
-      {/* Counter + actions */}
-      <div className="photo-viewer-actions">
-        {images.length > 1 && (
-          <span style={{ color: 'rgba(255,255,255,0.6)', fontFamily: 'var(--mono)', fontSize: 12 }}>
-            {currentIndex + 1} / {images.length}
-          </span>
+        {/* Previous arrow */}
+        {currentIndex > 0 && (
+          <button className="photo-viewer-nav photo-viewer-prev"
+            onClick={(e) => { e.stopPropagation(); goPrev(); }}>
+            ‹
+          </button>
         )}
-        <button className="btn btn-danger btn-sm" onClick={handleDelete}>
-          Delete Photo
-        </button>
+
+        <img src={images[currentIndex]} alt="" onClick={e => e.stopPropagation()} />
+
+        {/* Next arrow */}
+        {currentIndex < images.length - 1 && (
+          <button className="photo-viewer-nav photo-viewer-next"
+            onClick={(e) => { e.stopPropagation(); goNext(); }}>
+            ›
+          </button>
+        )}
+
+        {/* Counter + actions */}
+        <div className="photo-viewer-actions">
+          {images.length > 1 && (
+            <span style={{ color: 'rgba(255,255,255,0.6)', fontFamily: 'var(--mono)', fontSize: 12 }}>
+              {currentIndex + 1} / {images.length}
+            </span>
+          )}
+          <button className="btn btn-danger btn-sm" onClick={handleDelete}>
+            Delete Photo
+          </button>
+        </div>
       </div>
-    </div>
+    </Portal>
   );
 }
