@@ -45,10 +45,10 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
     ? [...locationShelves, form.shelf]
     : locationShelves;
 
-  // Derive bins (containers) on the selected shelf, or all shelfless bins when no shelf selected
+  // Derive bins: if a shelf is selected show bins on that shelf, otherwise show all bins at the location
   const binsOnShelf = form.shelf
     ? containers.filter(c => c.shelf === form.shelf)
-    : containers.filter(c => !c.shelf);
+    : containers;
 
   // Sync container_id when shelf/bin selection changes
   useEffect(() => {
@@ -57,7 +57,7 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
       return;
     }
     const match = containers.find(c =>
-      (c.shelf || '') === (form.shelf || '') && (c.name === form.bin || c.bin === form.bin)
+      (c.name === form.bin || c.bin === form.bin)
     );
     setForm(f => ({ ...f, container_id: match ? String(match.id) : '' }));
   }, [form.shelf, form.bin, containers]);
