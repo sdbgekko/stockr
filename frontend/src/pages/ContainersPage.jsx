@@ -13,6 +13,11 @@ function ContainerModal({ container, locations, onSave, onClose }) {
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  const selectedLocation = locations.find(l => String(l.id) === String(form.location_id));
+  const availableShelves = selectedLocation?.shelves
+    ? selectedLocation.shelves.split(',').map(s => s.trim()).filter(Boolean)
+    : [];
+
   const handleSave = async () => {
     if (!form.name.trim()) return;
     await onSave({ ...form, location_id: form.location_id || null });
@@ -29,7 +34,7 @@ function ContainerModal({ container, locations, onSave, onClose }) {
         </div>
         <div className="form-group">
           <label className="form-label">Location</label>
-          <select className="form-select" value={form.location_id} onChange={e => set('location_id', e.target.value)}>
+          <select className="form-select" value={form.location_id} onChange={e => { set('location_id', e.target.value); set('shelf', ''); }}>
             <option value="">— None —</option>
             {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
@@ -37,7 +42,14 @@ function ContainerModal({ container, locations, onSave, onClose }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div className="form-group">
             <label className="form-label">Shelf</label>
-            <input className="form-input" value={form.shelf} onChange={e => set('shelf', e.target.value)} placeholder="A, 1…" />
+            {availableShelves.length > 0 ? (
+              <select className="form-select" value={form.shelf} onChange={e => set('shelf', e.target.value)}>
+                <option value="">— None —</option>
+                {availableShelves.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            ) : (
+              <input className="form-input" value={form.shelf} onChange={e => set('shelf', e.target.value)} placeholder={form.location_id ? 'No shelves defined' : 'Select location first'} disabled={!!form.location_id && availableShelves.length === 0} />
+            )}
           </div>
           <div className="form-group">
             <label className="form-label">Bin</label>
