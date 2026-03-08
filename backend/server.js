@@ -33,6 +33,7 @@ async function initDB() {
       name VARCHAR(255) NOT NULL,
       type VARCHAR(50) NOT NULL CHECK (type IN ('warehouse', 'room', 'area')),
       description TEXT,
+      shelves TEXT DEFAULT '',
       created_at TIMESTAMP DEFAULT NOW()
     );
 
@@ -68,6 +69,13 @@ async function initDB() {
     CREATE INDEX IF NOT EXISTS idx_items_location ON items(location_id);
     CREATE INDEX IF NOT EXISTS idx_containers_location ON containers(location_id);
   `);
+  // Migration: add shelves column if missing
+  await pool.query(`
+    DO $$ BEGIN
+      ALTER TABLE locations ADD COLUMN IF NOT EXISTS shelves TEXT DEFAULT '';
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$;
+  `);
   console.log('✅ Database initialized');
 }
 
@@ -80,22 +88,22 @@ app.get('/api/locations', async (req, res) => {
 });
 
 app.post('/api/locations', async (req, res) => {
-  const { name, type, description } = req.body;
+  const { name, type, description, shelves } = req.body;
   try {
     const result = await pool.query(
-      'INSERT INTO locations (name, type, description) VALUES ($1, $2, $3) RETURNING *',
-      [name, type, description]
+      'INSERT INTO locations (name, type, description, shelves) VALUES ($1, $2, $3, $4) RETURNING *',
+      [name, type, description, shelves || '']
     );
     res.status(201).json(result.rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.put('/api/locations/:id', async (req, res) => {
-  const { name, type, description } = req.body;
+  const { name, type, description, shelves } = req.body;
   try {
     const result = await pool.query(
-      'UPDATE locations SET name=$1, type=$2, description=$3 WHERE id=$4 RETURNING *',
-      [name, type, description, req.params.id]
+      'UPDATE locations SET name=$1, type=$2, description=$3, shelves=$4 WHERE id=$5 RETURNING *',
+      [name, type, description, shelves || '', req.params.id]
     );
     res.json(result.rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }

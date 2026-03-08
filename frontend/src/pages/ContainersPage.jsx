@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { getContainers, createContainer, updateContainer, deleteContainer, getLocations } from '../utils/api';
+import QRModal from '../components/QRModal';
 
 function ContainerModal({ container, locations, onSave, onClose }) {
   const [form, setForm] = useState({
@@ -60,6 +61,7 @@ export default function ContainersPage() {
   const [containers, setContainers] = useState([]);
   const [locations, setLocations] = useState([]);
   const [modal, setModal] = useState(null); // null | 'new' | container obj
+  const [qrModal, setQrModal] = useState(null);
 
   const load = async () => {
     const [c, l] = await Promise.all([getContainers(), getLocations()]);
@@ -115,6 +117,7 @@ export default function ContainersPage() {
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(c)}>Delete</button>
                 <button className="btn btn-ghost btn-sm" onClick={() => setModal(c)}>Edit</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setQrModal({ data: `stockr://container/${c.id}`, title: c.name })}>QR</button>
               </div>
             </div>
           ))}
@@ -127,6 +130,14 @@ export default function ContainersPage() {
           locations={locations}
           onSave={handleSave}
           onClose={() => setModal(null)}
+        />
+      )}
+
+      {qrModal && (
+        <QRModal
+          data={qrModal.data}
+          title={qrModal.title}
+          onClose={() => setQrModal(null)}
         />
       )}
     </div>
