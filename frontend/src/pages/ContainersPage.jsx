@@ -114,10 +114,16 @@ export default function ContainersPage() {
                 <span className="badge badge-green">{c.item_count} items</span>
               </div>
               {c.description && <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 10 }}>{c.description}</div>}
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(c)}>Delete</button>
-                <button className="btn btn-ghost btn-sm" onClick={() => setModal(c)}>Edit</button>
-                <button className="btn btn-ghost btn-sm" onClick={() => setQrModal({ data: `stockr://container/${c.id}`, title: c.name })}>QR</button>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setModal(c)}>Edit</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setQrModal({ data: `stockr://container/${c.id}`, title: c.name })}>QR</button>
+                </div>
+                <button className="btn-icon btn-icon-danger" title="Delete" onClick={() => handleDelete(c)}>
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M2 4h12M5.33 4V2.67a1.33 1.33 0 011.34-1.34h2.66a1.33 1.33 0 011.34 1.34V4M12.67 4v9.33a1.33 1.33 0 01-1.34 1.34H4.67a1.33 1.33 0 01-1.34-1.34V4h9.34z"/>
+                  </svg>
+                </button>
               </div>
             </div>
           ))}

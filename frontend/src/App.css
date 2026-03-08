@@ -179,7 +179,9 @@ body {
 .btn-ghost { background: transparent; color: var(--text2); border: 1px solid var(--border); }
 .btn-ghost:active { background: var(--surface2); }
 .btn-danger { background: var(--danger); color: #fff; }
-.btn-icon { padding: 8px; border-radius: 8px; background: var(--surface2); border: 1px solid var(--border); color: var(--text2); font-size: 16px; cursor: pointer; }
+.btn-icon { padding: 8px; border-radius: 8px; background: var(--surface2); border: 1px solid var(--border); color: var(--text2); font-size: 16px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.btn-icon-danger { color: var(--text3); border-color: transparent; background: transparent; }
+.btn-icon-danger:active { color: var(--danger); background: rgba(239,68,68,0.1); }
 .btn-sm { padding: 6px 12px; font-size: 12px; }
 .btn-full { width: 100%; justify-content: center; }
 
