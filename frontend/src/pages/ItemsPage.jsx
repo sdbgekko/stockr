@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { getItems, updateItem, deleteItem, getLocations, getContainers } from '../utils/api';
 import ItemForm from '../components/ItemForm';
+import Portal from '../components/Portal';
 
 function ItemDetail({ item, onClose, onSaved, onDeleted }) {
   const [editing, setEditing] = useState(false);
@@ -15,60 +16,64 @@ function ItemDetail({ item, onClose, onSaved, onDeleted }) {
 
   if (editing) {
     return (
-      <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setEditing(false)}>
-        <div className="modal">
-          <div className="modal-handle" />
-          <div className="modal-title">Edit Item</div>
-          <ItemForm
-            initial={{ ...item, labels: item.ai_labels || [] }}
-            capturedImage={item.image_url}
-            onSave={async (data) => { await updateItem(item.id, data); toast.success('Updated!'); setEditing(false); onSaved(); }}
-            onCancel={() => setEditing(false)}
-          />
+      <Portal>
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setEditing(false)}>
+          <div className="modal">
+            <div className="modal-handle" />
+            <div className="modal-title">Edit Item</div>
+            <ItemForm
+              initial={{ ...item, labels: item.ai_labels || [] }}
+              capturedImage={item.image_url}
+              onSave={async (data) => { await updateItem(item.id, data); toast.success('Updated!'); setEditing(false); onSaved(); }}
+              onCancel={() => setEditing(false)}
+            />
+          </div>
         </div>
-      </div>
+      </Portal>
     );
   }
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
-        <div className="modal-handle" />
-        {item.image_url && (
-          <div style={{ marginBottom: 16, borderRadius: 12, overflow: 'hidden' }}>
-            <img src={item.image_url} alt="" style={{ width: '100%', maxHeight: 200, objectFit: 'cover' }} />
+    <Portal>
+      <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+        <div className="modal">
+          <div className="modal-handle" />
+          {item.image_url && (
+            <div style={{ marginBottom: 16, borderRadius: 12, overflow: 'hidden' }}>
+              <img src={item.image_url} alt="" style={{ width: '100%', maxHeight: 200, objectFit: 'cover' }} />
+            </div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+            <div>
+              <div className="modal-title" style={{ marginBottom: 4 }}>{item.name}</div>
+              <span className="badge badge-green">×{item.quantity} {item.unit}</span>
+            </div>
           </div>
-        )}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-          <div>
-            <div className="modal-title" style={{ marginBottom: 4 }}>{item.name}</div>
-            <span className="badge badge-green">×{item.quantity} {item.unit}</span>
+          {item.description && <p style={{ color: 'var(--text2)', fontSize: 14, marginBottom: 12 }}>{item.description}</p>}
+          <div style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text3)', lineHeight: 2 }}>
+            {item.location_name && <div>📍 {item.location_name}</div>}
+            {item.container_name && <div>📦 {item.container_name}</div>}
+            {(item.shelf || item.container_shelf) && <div>🗄 Shelf: {item.shelf || item.container_shelf}</div>}
+            {(item.bin || item.container_bin) && <div>🔲 Bin: {item.bin || item.container_bin}</div>}
+            {item.barcode && <div>🔖 {item.barcode}</div>}
           </div>
-        </div>
-        {item.description && <p style={{ color: 'var(--text2)', fontSize: 14, marginBottom: 12 }}>{item.description}</p>}
-        <div style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text3)', lineHeight: 2 }}>
-          {item.location_name && <div>📍 {item.location_name}</div>}
-          {item.container_name && <div>📦 {item.container_name}</div>}
-          {(item.shelf || item.container_shelf) && <div>🗄 Shelf: {item.shelf || item.container_shelf}</div>}
-          {(item.bin || item.container_bin) && <div>🔲 Bin: {item.bin || item.container_bin}</div>}
-          {item.barcode && <div>🔖 {item.barcode}</div>}
-        </div>
-        {item.ai_labels?.length > 0 && (
-          <div style={{ marginTop: 12, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {item.ai_labels.map(l => <span key={l} className="badge badge-purple">{l}</span>)}
+          {item.ai_labels?.length > 0 && (
+            <div style={{ marginTop: 12, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {item.ai_labels.map(l => <span key={l} className="badge badge-purple">{l}</span>)}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 12, marginTop: 20, alignItems: 'center' }}>
+            <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Close</button>
+            <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => setEditing(true)}>Edit</button>
+            <button className="btn-icon btn-icon-danger" title="Delete" onClick={handleDelete}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 4h12M5.33 4V2.67a1.33 1.33 0 011.34-1.34h2.66a1.33 1.33 0 011.34 1.34V4M12.67 4v9.33a1.33 1.33 0 01-1.34 1.34H4.67a1.33 1.33 0 01-1.34-1.34V4h9.34z"/>
+              </svg>
+            </button>
           </div>
-        )}
-        <div style={{ display: 'flex', gap: 12, marginTop: 20, alignItems: 'center' }}>
-          <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Close</button>
-          <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => setEditing(true)}>Edit</button>
-          <button className="btn-icon btn-icon-danger" title="Delete" onClick={handleDelete}>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M2 4h12M5.33 4V2.67a1.33 1.33 0 011.34-1.34h2.66a1.33 1.33 0 011.34 1.34V4M12.67 4v9.33a1.33 1.33 0 01-1.34 1.34H4.67a1.33 1.33 0 01-1.34-1.34V4h9.34z"/>
-            </svg>
-          </button>
         </div>
       </div>
-    </div>
+    </Portal>
   );
 }
 
