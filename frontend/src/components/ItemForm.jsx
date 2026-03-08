@@ -127,7 +127,15 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
 
       <div className="form-group">
         <label className="form-label">Container / Bin</label>
-        <select className="form-select" value={form.container_id} onChange={e => set('container_id', e.target.value)}>
+        <select className="form-select" value={form.container_id} onChange={e => {
+          const cid = e.target.value;
+          set('container_id', cid);
+          const selected = containers.find(c => String(c.id) === cid);
+          if (selected) {
+            set('shelf', selected.shelf || '');
+            set('bin', selected.bin || '');
+          }
+        }}>
           <option value="">— No container —</option>
           {containers.map(c => <option key={c.id} value={c.id}>{c.name}{c.shelf ? ` · Shelf ${c.shelf}` : ''}{c.bin ? ` · Bin ${c.bin}` : ''}</option>)}
         </select>
@@ -136,11 +144,11 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div className="form-group">
           <label className="form-label">Shelf</label>
-          <input className="form-input" value={form.shelf} onChange={e => set('shelf', e.target.value)} placeholder="A, B, 1, 2…" />
+          <input className="form-input" value={form.shelf} onChange={e => set('shelf', e.target.value)} placeholder={form.container_id ? '' : 'A, B, 1, 2…'} disabled={!!form.container_id} style={form.container_id ? { opacity: 0.6 } : {}} />
         </div>
         <div className="form-group">
           <label className="form-label">Bin</label>
-          <input className="form-input" value={form.bin} onChange={e => set('bin', e.target.value)} placeholder="01, 02…" />
+          <input className="form-input" value={form.bin} onChange={e => set('bin', e.target.value)} placeholder={form.container_id ? '' : '01, 02…'} disabled={!!form.container_id} style={form.container_id ? { opacity: 0.6 } : {}} />
         </div>
       </div>
 
