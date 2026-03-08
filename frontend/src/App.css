@@ -28,12 +28,14 @@ body {
   overflow-x: hidden;
 }
 
-.app { display: flex; flex-direction: column; min-height: 100dvh; }
+.app { display: flex; flex-direction: column; height: 100dvh; }
 
 .main-content {
   flex: 1;
+  min-height: 0;
   padding-bottom: var(--nav-h);
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* ── Bottom Nav ── */
