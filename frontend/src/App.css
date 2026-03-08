@@ -348,8 +348,8 @@ body {
 }
 
 .scan-frame {
-  width: 200px;
-  height: 200px;
+  width: 85vw;
+  height: 85vw;
   border: 2px solid var(--accent);
   border-radius: 16px;
   box-shadow: 0 0 0 4000px rgba(0,0,0,0.5);
