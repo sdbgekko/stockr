@@ -420,3 +420,13 @@ body {
 
 @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:0.4 } }
 .pulsing { animation: pulse 1.5s infinite; }
+
+/* ── Swipeable Card ── */
+.swipeable-wrapper { position: relative; overflow: hidden; border-radius: var(--radius); }
+.swipeable-actions { position: absolute; right: 0; top: 0; bottom: 0; display: flex; align-items: stretch; }
+.swipeable-action {
+  width: 72px; border: none; color: #fff; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  font-size: 10px; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.05em; gap: 4px;
+}
+.swipeable-content { position: relative; z-index: 1; background: var(--surface); }
