@@ -38,7 +38,7 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
     if (form.container_id && containers.length > 0) {
       const selected = containers.find(c => String(c.id) === String(form.container_id));
       if (selected) {
-        setForm(f => ({ ...f, shelf: selected.shelf || '', bin: selected.bin || '' }));
+        setForm(f => ({ ...f, shelf: selected.shelf || '', bin: selected.bin || selected.name || '' }));
       }
     }
   }, [containers]);
@@ -143,7 +143,10 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
           const selected = containers.find(c => String(c.id) === cid);
           if (selected) {
             set('shelf', selected.shelf || '');
-            set('bin', selected.bin || '');
+            set('bin', selected.bin || selected.name || '');
+          } else {
+            set('shelf', '');
+            set('bin', '');
           }
         }}>
           <option value="">— No container —</option>
