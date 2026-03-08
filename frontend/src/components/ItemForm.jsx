@@ -22,8 +22,6 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
   const [newShelfMode, setNewShelfMode] = useState(false);
   const [newBinMode, setNewBinMode] = useState(false);
   const fileRef = useRef(null);
-  const newShelfRef = useRef(null);
-  const newBinRef = useRef(null);
 
   useEffect(() => {
     getLocations().then(setLocations).catch(console.error);
@@ -165,24 +163,23 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
         <div className="form-group">
           <label className="form-label">Shelf</label>
           {availableShelves.length > 0 && !newShelfMode ? (
-            <select className="form-select" value={form.shelf} onChange={e => {
-              if (e.target.value === '__new__') {
+            <div style={{ display: 'flex', gap: 6 }}>
+              <select className="form-select" style={{ flex: 1 }} value={form.shelf} onChange={e => {
+                set('shelf', e.target.value); set('bin', ''); set('container_id', '');
+                setNewBinMode(false);
+              }}>
+                <option value="">— None —</option>
+                {availableShelves.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <button type="button" className="btn-icon" style={{ flexShrink: 0 }} onClick={() => {
                 setNewShelfMode(true);
                 set('shelf', ''); set('bin', ''); set('container_id', '');
                 setNewBinMode(false);
-                setTimeout(() => newShelfRef.current?.focus(), 50);
-              } else {
-                set('shelf', e.target.value); set('bin', ''); set('container_id', '');
-                setNewBinMode(false);
-              }
-            }}>
-              <option value="">— None —</option>
-              {availableShelves.map(s => <option key={s} value={s}>{s}</option>)}
-              <option value="__new__">+ New shelf</option>
-            </select>
+              }}>+</button>
+            </div>
           ) : (
             <div style={{ display: 'flex', gap: 6 }}>
-              <input ref={newShelfRef} className="form-input" style={{ flex: 1 }} value={form.shelf} onChange={e => { set('shelf', e.target.value); set('bin', ''); set('container_id', ''); setNewBinMode(false); }} placeholder="New shelf name" />
+              <input className="form-input" style={{ flex: 1 }} value={form.shelf} onChange={e => { set('shelf', e.target.value); set('bin', ''); set('container_id', ''); setNewBinMode(false); }} placeholder="New shelf name" autoFocus={newShelfMode} />
               {availableShelves.length > 0 && (
                 <button type="button" className="btn-icon" style={{ flexShrink: 0 }} onClick={() => { setNewShelfMode(false); set('shelf', ''); set('bin', ''); set('container_id', ''); }}>✕</button>
               )}
@@ -192,22 +189,19 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
         <div className="form-group">
           <label className="form-label">Bin</label>
           {binsOnShelf.length > 0 && !newBinMode ? (
-            <select className="form-select" value={form.bin} onChange={e => {
-              if (e.target.value === '__new__') {
+            <div style={{ display: 'flex', gap: 6 }}>
+              <select className="form-select" style={{ flex: 1 }} value={form.bin} onChange={e => set('bin', e.target.value)}>
+                <option value="">— None —</option>
+                {binsOnShelf.map(c => <option key={c.id} value={c.bin || c.name}>{c.name}</option>)}
+              </select>
+              <button type="button" className="btn-icon" style={{ flexShrink: 0 }} onClick={() => {
                 setNewBinMode(true);
                 set('bin', ''); set('container_id', '');
-                setTimeout(() => newBinRef.current?.focus(), 50);
-              } else {
-                set('bin', e.target.value);
-              }
-            }}>
-              <option value="">— None —</option>
-              {binsOnShelf.map(c => <option key={c.id} value={c.bin || c.name}>{c.name}</option>)}
-              <option value="__new__">+ New bin</option>
-            </select>
+              }}>+</button>
+            </div>
           ) : (
             <div style={{ display: 'flex', gap: 6 }}>
-              <input ref={newBinRef} className="form-input" style={{ flex: 1 }} value={form.bin} onChange={e => set('bin', e.target.value)} placeholder={form.shelf ? 'New bin name' : ''} />
+              <input className="form-input" style={{ flex: 1 }} value={form.bin} onChange={e => set('bin', e.target.value)} placeholder={form.shelf ? 'New bin name' : ''} autoFocus={newBinMode} />
               {binsOnShelf.length > 0 && (
                 <button type="button" className="btn-icon" style={{ flexShrink: 0 }} onClick={() => { setNewBinMode(false); set('bin', ''); set('container_id', ''); }}>✕</button>
               )}
