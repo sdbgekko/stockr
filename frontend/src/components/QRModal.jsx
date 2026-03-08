@@ -1,24 +1,44 @@
 import { useEffect, useRef } from 'react';
 
 export default function QRModal({ data, title, onClose }) {
-  const canvasRef = useRef(null);
+  const imgRef = useRef(null);
 
   useEffect(() => {
-    if (canvasRef.current && window.QRCode) {
-      window.QRCode.toCanvas(canvasRef.current, data, {
-        width: 256,
-        margin: 2,
-        color: { dark: '#000000', light: '#ffffff' },
-      });
+    if (!window.qrcode) return;
+    const qr = window.qrcode(0, 'M');
+    qr.addData(data);
+    qr.make();
+    if (imgRef.current) {
+      imgRef.current.innerHTML = qr.createSvgTag({ cellSize: 6, margin: 4 });
+      // Make SVG white on white background for visibility
+      const svg = imgRef.current.querySelector('svg');
+      if (svg) {
+        svg.style.borderRadius = '8px';
+        svg.style.background = '#ffffff';
+      }
     }
   }, [data]);
 
   const handleDownload = () => {
-    if (!canvasRef.current) return;
-    const link = document.createElement('a');
-    link.download = `${title || 'qr-code'}.png`;
-    link.href = canvasRef.current.toDataURL('image/png');
-    link.click();
+    if (!imgRef.current) return;
+    const svg = imgRef.current.querySelector('svg');
+    if (!svg) return;
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const canvas = document.createElement('canvas');
+    const img = new Image();
+    img.onload = () => {
+      canvas.width = img.width * 2;
+      canvas.height = img.height * 2;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const link = document.createElement('a');
+      link.download = `${title || 'qr-code'}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    };
+    img.src = 'data:image/svg+xml;base64,' + btoa(svgData);
   };
 
   return (
@@ -27,7 +47,7 @@ export default function QRModal({ data, title, onClose }) {
         <div className="modal-handle" />
         <div className="modal-title">{title || 'QR Code'}</div>
         <div style={{ display: 'flex', justifyContent: 'center', padding: '16px 0' }}>
-          <canvas ref={canvasRef} style={{ borderRadius: 8 }} />
+          <div ref={imgRef} />
         </div>
         <div style={{ textAlign: 'center', fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text3)', marginBottom: 16, wordBreak: 'break-all' }}>
           {data}
