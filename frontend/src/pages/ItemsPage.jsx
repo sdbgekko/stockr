@@ -58,10 +58,14 @@ function ItemDetail({ item, onClose, onSaved, onDeleted }) {
             {item.ai_labels.map(l => <span key={l} className="badge badge-purple">{l}</span>)}
           </div>
         )}
-        <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
-          <button className="btn btn-danger btn-sm" onClick={handleDelete}>Delete</button>
+        <div style={{ display: 'flex', gap: 12, marginTop: 20, alignItems: 'center' }}>
           <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Close</button>
           <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => setEditing(true)}>Edit</button>
+          <button className="btn-icon btn-icon-danger" title="Delete" onClick={handleDelete}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 4h12M5.33 4V2.67a1.33 1.33 0 011.34-1.34h2.66a1.33 1.33 0 011.34 1.34V4M12.67 4v9.33a1.33 1.33 0 01-1.34 1.34H4.67a1.33 1.33 0 01-1.34-1.34V4h9.34z"/>
+            </svg>
+          </button>
         </div>
       </div>
     </div>

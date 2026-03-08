@@ -125,9 +125,13 @@ export default function LocationsPage() {
                     </div>
                   </div>
                 )}
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(l)}>Delete</button>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
                   <button className="btn btn-ghost btn-sm" onClick={() => setModal(l)}>Edit</button>
+                  <button className="btn-icon btn-icon-danger" title="Delete" onClick={() => handleDelete(l)}>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M2 4h12M5.33 4V2.67a1.33 1.33 0 011.34-1.34h2.66a1.33 1.33 0 011.34 1.34V4M12.67 4v9.33a1.33 1.33 0 01-1.34 1.34H4.67a1.33 1.33 0 01-1.34-1.34V4h9.34z"/>
+                    </svg>
+                  </button>
                 </div>
               </div>
             );
