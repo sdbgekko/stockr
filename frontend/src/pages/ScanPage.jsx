@@ -122,12 +122,12 @@ export default function ScanPage() {
               </div>
             </div>
           </div>
-          <div className="scan-actions">
-            <button className="btn btn-primary btn-full" style={{ fontSize: 18, padding: '16px' }} onClick={capturePhoto}>
-              ◎ Capture
-            </button>
-            <button className="btn btn-ghost btn-full" onClick={stopCamera}>Cancel</button>
-          </div>
+          <div className="scan-actions" style={{ position: 'fixed', bottom: 'calc(var(--nav-h) + 12px)', left: 0, right: 0, padding: '0 16px', zIndex: 50 }}>
+  <button className="btn btn-primary btn-full" style={{ fontSize: 18, padding: '16px' }} onClick={capturePhoto}>
+    ◎ Capture
+  </button>
+  <button className="btn btn-ghost btn-full" onClick={stopCamera}>Cancel</button>
+</div>
         </div>
       )}
 
