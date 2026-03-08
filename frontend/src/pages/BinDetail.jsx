@@ -7,6 +7,7 @@ import {
   updateContainer, deleteContainer, createContainer,
 } from '../utils/api';
 import QRModal from '../components/QRModal';
+import PhotoViewer from '../components/PhotoViewer';
 import Portal from '../components/Portal';
 
 /* ── Inline ContainerModal (same as ContainersPage) ── */
@@ -212,7 +213,7 @@ export default function BinDetail() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [viewerImage, setViewerImage] = useState(null);
+  const [viewerIndex, setViewerIndex] = useState(null);
 
   // Modals
   const [editModal, setEditModal] = useState(false);
@@ -268,7 +269,6 @@ export default function BinDetail() {
   const handleDeletePhoto = async (imageUrl) => {
     try {
       await removeContainerImage(id, imageUrl);
-      setViewerImage(null);
       await load();
       toast.success('Photo removed');
     } catch (e) {
@@ -362,7 +362,7 @@ export default function BinDetail() {
       </div>
       <div className="photo-grid">
         {images.map((url, i) => (
-          <div key={i} className="photo-thumb" onClick={() => setViewerImage(url)}>
+          <div key={i} className="photo-thumb" onClick={() => setViewerIndex(i)}>
             <img src={url} alt="" />
           </div>
         ))}
@@ -429,16 +429,13 @@ export default function BinDetail() {
       </div>
 
       {/* Photo viewer */}
-      {viewerImage && (
-        <div className="photo-viewer" onClick={() => setViewerImage(null)}>
-          <button className="photo-viewer-close" onClick={() => setViewerImage(null)}>✕</button>
-          <img src={viewerImage} alt="" onClick={e => e.stopPropagation()} />
-          <div className="photo-viewer-actions">
-            <button className="btn btn-danger btn-sm" onClick={(e) => { e.stopPropagation(); handleDeletePhoto(viewerImage); }}>
-              Delete Photo
-            </button>
-          </div>
-        </div>
+      {viewerIndex !== null && (
+        <PhotoViewer
+          images={images}
+          startIndex={viewerIndex}
+          onClose={() => setViewerIndex(null)}
+          onDelete={handleDeletePhoto}
+        />
       )}
 
       {/* Edit modal */}
