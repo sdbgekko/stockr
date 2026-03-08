@@ -91,6 +91,19 @@ async function initDB() {
     EXCEPTION WHEN duplicate_column THEN NULL;
     END $$;
   `);
+  // Migration: add image_url and shelf_images to locations
+  await pool.query(`
+    DO $$ BEGIN
+      ALTER TABLE locations ADD COLUMN IF NOT EXISTS image_url TEXT;
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$;
+  `);
+  await pool.query(`
+    DO $$ BEGIN
+      ALTER TABLE locations ADD COLUMN IF NOT EXISTS shelf_images JSONB DEFAULT '{}';
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$;
+  `);
   console.log('✅ Database initialized');
 }
 
@@ -103,22 +116,22 @@ app.get('/api/locations', async (req, res) => {
 });
 
 app.post('/api/locations', async (req, res) => {
-  const { name, type, description, shelves } = req.body;
+  const { name, type, description, shelves, image_url, shelf_images } = req.body;
   try {
     const result = await pool.query(
-      'INSERT INTO locations (name, type, description, shelves) VALUES ($1, $2, $3, $4) RETURNING *',
-      [name, type, description, shelves || '']
+      'INSERT INTO locations (name, type, description, shelves, image_url, shelf_images) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+      [name, type, description, shelves || '', image_url || null, JSON.stringify(shelf_images || {})]
     );
     res.status(201).json(result.rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.put('/api/locations/:id', async (req, res) => {
-  const { name, type, description, shelves } = req.body;
+  const { name, type, description, shelves, image_url, shelf_images } = req.body;
   try {
     const result = await pool.query(
-      'UPDATE locations SET name=$1, type=$2, description=$3, shelves=$4 WHERE id=$5 RETURNING *',
-      [name, type, description, shelves || '', req.params.id]
+      'UPDATE locations SET name=$1, type=$2, description=$3, shelves=$4, image_url=$5, shelf_images=$6 WHERE id=$7 RETURNING *',
+      [name, type, description, shelves || '', image_url || null, JSON.stringify(shelf_images || {}), req.params.id]
     );
     res.json(result.rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
