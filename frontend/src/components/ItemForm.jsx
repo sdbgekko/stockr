@@ -43,6 +43,17 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
     }
   }, [containers]);
 
+  // Reverse sync: auto-select container when shelf/bin match
+  useEffect(() => {
+    if (form.container_id || !form.shelf || !form.bin || containers.length === 0) return;
+    const match = containers.find(c =>
+      c.shelf === form.shelf && (c.bin === form.bin || c.name === form.bin)
+    );
+    if (match) {
+      setForm(f => ({ ...f, container_id: String(match.id) }));
+    }
+  }, [form.shelf, form.bin, containers]);
+
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const handlePhotoUpload = async (e) => {
