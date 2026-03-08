@@ -112,7 +112,7 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
             style={{ position: 'absolute', bottom: 8, right: 8, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
             onClick={() => fileRef.current?.click()}
           >
-            {uploading ? 'Uploading\u2026' : 'Change Photo'}
+            {uploading ? 'Uploading…' : 'Change Photo'}
           </button>
         </div>
       ) : (
@@ -122,7 +122,7 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
           onClick={() => fileRef.current?.click()}
           disabled={uploading}
         >
-          {uploading ? 'Uploading\u2026' : '\ud83d\udcf7 Add Photo'}
+          {uploading ? 'Uploading…' : '📷 Add Photo'}
         </button>
       )}
 
@@ -133,7 +133,7 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
 
       <div className="form-group">
         <label className="form-label">Description</label>
-        <textarea className="form-textarea" value={form.description} onChange={e => set('description', e.target.value)} placeholder="Optional details\u2026" rows={2} />
+        <textarea className="form-textarea" value={form.description} onChange={e => set('description', e.target.value)} placeholder="Optional details…" rows={2} />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -152,7 +152,7 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
       <div className="form-group">
         <label className="form-label">Location</label>
         <select className="form-select" value={form.location_id} onChange={e => { set('location_id', e.target.value); set('shelf', ''); set('bin', ''); set('container_id', ''); }}>
-          <option value="">\u2014 No location \u2014</option>
+          <option value="">— No location —</option>
           {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
         </select>
       </div>
@@ -162,7 +162,7 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
           <label className="form-label">Shelf</label>
           {availableShelves.length > 0 ? (
             <select className="form-select" value={form.shelf} onChange={e => { set('shelf', e.target.value); set('bin', ''); set('container_id', ''); }}>
-              <option value="">\u2014 None \u2014</option>
+              <option value="">— None —</option>
               {availableShelves.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           ) : (
@@ -173,7 +173,7 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
           <label className="form-label">Bin</label>
           {binsOnShelf.length > 0 ? (
             <select className="form-select" value={form.bin} onChange={e => set('bin', e.target.value)}>
-              <option value="">\u2014 None \u2014</option>
+              <option value="">— None —</option>
               {binsOnShelf.map(c => <option key={c.id} value={c.bin || c.name}>{c.name}</option>)}
             </select>
           ) : (
@@ -189,13 +189,13 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
 
       <div className="form-group">
         <label className="form-label">Tags (comma separated)</label>
-        <input className="form-input" value={form.tags} onChange={e => set('tags', e.target.value)} placeholder="tools, hardware, misc\u2026" />
+        <input className="form-input" value={form.tags} onChange={e => set('tags', e.target.value)} placeholder="tools, hardware, misc…" />
       </div>
 
       <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
         <button className="btn btn-ghost" onClick={onCancel} style={{ flex: 1 }}>Cancel</button>
         <button className="btn btn-primary" onClick={handleSave} disabled={saving || !form.name.trim()} style={{ flex: 2 }}>
-          {saving ? 'Saving\u2026' : '\u2713 Save Item'}
+          {saving ? 'Saving…' : '✓ Save Item'}
         </button>
       </div>
     </div>
