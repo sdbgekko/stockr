@@ -8,7 +8,6 @@ function ContainerModal({ container, locations, onSave, onClose }) {
     name: container?.name || '',
     location_id: container?.location_id || '',
     shelf: container?.shelf || '',
-    bin: container?.bin || '',
     description: container?.description || '',
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -39,22 +38,16 @@ function ContainerModal({ container, locations, onSave, onClose }) {
             {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div className="form-group">
-            <label className="form-label">Shelf</label>
-            {availableShelves.length > 0 ? (
-              <select className="form-select" value={form.shelf} onChange={e => set('shelf', e.target.value)}>
-                <option value="">— None —</option>
-                {availableShelves.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            ) : (
-              <input className="form-input" value={form.shelf} onChange={e => set('shelf', e.target.value)} placeholder={form.location_id ? 'No shelves defined' : 'Select location first'} disabled={!!form.location_id && availableShelves.length === 0} />
-            )}
-          </div>
-          <div className="form-group">
-            <label className="form-label">Bin</label>
-            <input className="form-input" value={form.bin} onChange={e => set('bin', e.target.value)} placeholder="01…" />
-          </div>
+        <div className="form-group">
+          <label className="form-label">Shelf</label>
+          {availableShelves.length > 0 ? (
+            <select className="form-select" value={form.shelf} onChange={e => set('shelf', e.target.value)}>
+              <option value="">— None —</option>
+              {availableShelves.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          ) : (
+            <input className="form-input" value={form.shelf} onChange={e => set('shelf', e.target.value)} placeholder={form.location_id ? 'No shelves defined' : 'Select location first'} disabled={!!form.location_id && availableShelves.length === 0} />
+          )}
         </div>
         <div className="form-group">
           <label className="form-label">Description</label>
