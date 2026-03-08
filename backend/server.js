@@ -634,16 +634,18 @@ app.post('/api/analyze-image', upload.single('image'), async (req, res) => {
 // ─── Stats ────────────────────────────────────────────────────────────────────
 app.get('/api/stats', async (req, res) => {
   try {
-    const [items, containers, locations] = await Promise.all([
+    const [items, containers, locations, shelves] = await Promise.all([
       pool.query('SELECT COUNT(*) as count, SUM(quantity) as total FROM items'),
       pool.query('SELECT COUNT(*) as count FROM containers'),
       pool.query('SELECT COUNT(*) as count FROM locations'),
+      pool.query(`SELECT COALESCE(SUM(array_length(regexp_split_to_array(shelves, ','), 1)), 0) as count FROM locations WHERE shelves IS NOT NULL AND shelves != ''`),
     ]);
     res.json({
       items: parseInt(items.rows[0].count),
       totalQuantity: parseInt(items.rows[0].total) || 0,
       containers: parseInt(containers.rows[0].count),
       locations: parseInt(locations.rows[0].count),
+      shelves: parseInt(shelves.rows[0].count) || 0,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

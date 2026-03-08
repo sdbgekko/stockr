@@ -158,6 +158,12 @@ body {
   padding: 16px;
 }
 
+.stat-card-nav {
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.1s;
+}
+.stat-card-nav:active { border-color: var(--accent); transform: scale(0.97); }
+
 .stat-value {
   font-family: var(--mono);
   font-size: 28px;
