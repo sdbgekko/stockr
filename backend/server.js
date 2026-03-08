@@ -192,6 +192,11 @@ app.put('/api/containers/:id', async (req, res) => {
 
 app.delete('/api/containers/:id', async (req, res) => {
   try {
+    // Clear container reference and bin from items in this container
+    await pool.query(
+      "UPDATE items SET container_id=NULL, bin='' WHERE container_id=$1",
+      [req.params.id]
+    );
     await pool.query('DELETE FROM containers WHERE id=$1', [req.params.id]);
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
