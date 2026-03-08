@@ -13,6 +13,15 @@ export const getLocation = (id) => API.get(`/locations/${id}`).then(r => r.data)
 export const addShelf = (locationId, name) => API.post(`/locations/${locationId}/shelves`, { name }).then(r => r.data);
 export const deleteShelf = (locationId, name) =>
   API.delete(`/locations/${locationId}/shelves/${encodeURIComponent(name)}`).then(r => r.data);
+export const addShelfImage = (locationId, shelfName, file) => {
+  const fd = new FormData();
+  fd.append('image', file);
+  return API.post(`/locations/${locationId}/shelves/${encodeURIComponent(shelfName)}/images`, fd, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }).then(r => r.data);
+};
+export const removeShelfImage = (locationId, shelfName, image_url) =>
+  API.delete(`/locations/${locationId}/shelves/${encodeURIComponent(shelfName)}/images`, { data: { image_url } }).then(r => r.data);
 
 export const getContainers = (params) => API.get('/containers', { params }).then(r => r.data);
 export const getContainer = (id) => API.get(`/containers/${id}`).then(r => r.data);

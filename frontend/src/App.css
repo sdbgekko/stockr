@@ -523,9 +523,30 @@ body {
   align-items: center;
   justify-content: center;
 }
+.photo-viewer-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(255,255,255,0.15);
+  border: none;
+  color: #fff;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+.photo-viewer-nav:active { background: rgba(255,255,255,0.3); }
+.photo-viewer-prev { left: 12px; }
+.photo-viewer-next { right: 12px; }
 .photo-viewer-actions {
   position: absolute;
   bottom: calc(24px + env(safe-area-inset-bottom, 0px));
   display: flex;
-  gap: 12px;
+  align-items: center;
+  gap: 16px;
 }

@@ -111,6 +111,25 @@ async function initDB() {
     EXCEPTION WHEN duplicate_column THEN NULL;
     END $$;
   `);
+  // Migration: convert shelf_images from single URL strings to arrays
+  await pool.query(`
+    UPDATE locations
+    SET shelf_images = (
+      SELECT COALESCE(jsonb_object_agg(key,
+        CASE
+          WHEN jsonb_typeof(value) = 'string' THEN jsonb_build_array(value)
+          WHEN jsonb_typeof(value) = 'array' THEN value
+          ELSE '[]'::jsonb
+        END
+      ), '{}'::jsonb)
+      FROM jsonb_each(COALESCE(shelf_images, '{}'::jsonb))
+    )
+    WHERE shelf_images IS NOT NULL
+      AND shelf_images != '{}'::jsonb
+      AND EXISTS (
+        SELECT 1 FROM jsonb_each(shelf_images) WHERE jsonb_typeof(value) = 'string'
+      );
+  `);
   console.log('✅ Database initialized');
 }
 
@@ -245,6 +264,54 @@ app.delete('/api/locations/:id/shelves/:name', async (req, res) => {
     ]);
 
     res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/locations/:id/shelves/:name/images', upload.single('image'), async (req, res) => {
+  const shelfName = decodeURIComponent(req.params.name);
+  if (!req.file) return res.status(400).json({ error: 'No image provided' });
+  if (!cloudinaryEnabled) return res.status(500).json({ error: 'Image storage not configured' });
+  try {
+    const url = await uploadToCloudinary(req.file.buffer, req.file.mimetype);
+    // Append URL to the shelf's image array within shelf_images JSONB
+    const result = await pool.query(
+      `UPDATE locations
+       SET shelf_images = jsonb_set(
+         COALESCE(shelf_images, '{}'::jsonb),
+         $1::text[],
+         COALESCE(shelf_images->$2, '[]'::jsonb) || $3::jsonb
+       )
+       WHERE id = $4 RETURNING shelf_images`,
+      ['{' + shelfName + '}', shelfName, JSON.stringify([url]), req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Location not found' });
+    res.json({ image_url: url, images: result.rows[0].shelf_images[shelfName] || [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/locations/:id/shelves/:name/images', async (req, res) => {
+  const shelfName = decodeURIComponent(req.params.name);
+  const { image_url } = req.body;
+  if (!image_url) return res.status(400).json({ error: 'image_url required' });
+  try {
+    // Remove specific URL from the shelf's image array
+    const result = await pool.query(
+      `UPDATE locations
+       SET shelf_images = jsonb_set(
+         COALESCE(shelf_images, '{}'::jsonb),
+         $1::text[],
+         COALESCE(
+           (SELECT jsonb_agg(elem)
+            FROM jsonb_array_elements(COALESCE(shelf_images->$2, '[]'::jsonb)) AS elem
+            WHERE elem #>> '{}' != $3),
+           '[]'::jsonb
+         )
+       )
+       WHERE id = $4 RETURNING shelf_images`,
+      ['{' + shelfName + '}', shelfName, image_url, req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Location not found' });
+    res.json({ images: result.rows[0].shelf_images[shelfName] || [] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

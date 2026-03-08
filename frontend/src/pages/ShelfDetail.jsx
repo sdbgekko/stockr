@@ -1,17 +1,22 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { getLocation, getItems, getContainers } from '../utils/api';
+import { getLocation, getItems, getContainers, addShelfImage, removeShelfImage } from '../utils/api';
 import QRModal from '../components/QRModal';
+import PhotoViewer from '../components/PhotoViewer';
 
 export default function ShelfDetail() {
   const { id, shelf } = useParams();
   const navigate = useNavigate();
   const shelfName = decodeURIComponent(shelf);
+  const fileInputRef = useRef(null);
+
   const [location, setLocation] = useState(null);
   const [items, setItems] = useState([]);
   const [bins, setBins] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState(null);
   const [qrModal, setQrModal] = useState(null);
 
   const load = async () => {
@@ -32,6 +37,36 @@ export default function ShelfDetail() {
   };
 
   useEffect(() => { load(); }, [id, shelf]);
+
+  const images = (location?.shelf_images?.[shelfName]) || [];
+  // Handle legacy single-URL format just in case
+  const imageList = Array.isArray(images) ? images : (images ? [images] : []);
+
+  const handlePhotoCapture = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      await addShelfImage(id, shelfName, file);
+      await load();
+      toast.success('Photo added');
+    } catch (err) {
+      toast.error('Upload failed');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleDeletePhoto = async (imageUrl) => {
+    try {
+      await removeShelfImage(id, shelfName, imageUrl);
+      await load();
+      toast.success('Photo removed');
+    } catch (e) {
+      toast.error('Failed to remove photo');
+    }
+  };
 
   if (loading) return <div className="page"><div className="loading pulsing">Loading…</div></div>;
   if (!location) return null;
@@ -55,6 +90,10 @@ export default function ShelfDetail() {
       {/* Summary stats */}
       <div style={{ padding: '0 16px 20px', display: 'flex', gap: 12 }}>
         <div style={{ flex: 1, background: 'var(--surface2)', borderRadius: 'var(--radius)', padding: '12px 14px', textAlign: 'center' }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--accent)' }}>{imageList.length}</div>
+          <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase' }}>Photos</div>
+        </div>
+        <div style={{ flex: 1, background: 'var(--surface2)', borderRadius: 'var(--radius)', padding: '12px 14px', textAlign: 'center' }}>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--accent)' }}>{bins.length}</div>
           <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase' }}>Bins</div>
         </div>
@@ -64,9 +103,34 @@ export default function ShelfDetail() {
         </div>
       </div>
 
+      {/* Photo grid */}
+      <div style={{ padding: '0 16px' }}>
+        <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
+          Photos ({imageList.length})
+        </div>
+      </div>
+      <div className="photo-grid">
+        {imageList.map((url, i) => (
+          <div key={i} className="photo-thumb" onClick={() => setViewerIndex(i)}>
+            <img src={url} alt="" />
+          </div>
+        ))}
+        <div className={`photo-add${uploading ? ' uploading' : ''}`} onClick={() => !uploading && fileInputRef.current?.click()}>
+          {uploading ? '…' : '+'}
+        </div>
+      </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handlePhotoCapture}
+        style={{ display: 'none' }}
+      />
+
       {/* Bins on this shelf */}
       {bins.length > 0 && (
-        <div style={{ padding: '0 16px' }}>
+        <div style={{ padding: '16px 16px 0' }}>
           <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
             Bins ({bins.length})
           </div>
@@ -117,6 +181,16 @@ export default function ShelfDetail() {
           ))
         )}
       </div>
+
+      {/* Photo viewer */}
+      {viewerIndex !== null && (
+        <PhotoViewer
+          images={imageList}
+          startIndex={viewerIndex}
+          onClose={() => setViewerIndex(null)}
+          onDelete={handleDeletePhoto}
+        />
+      )}
 
       {qrModal && (
         <QRModal
