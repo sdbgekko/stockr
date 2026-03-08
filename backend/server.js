@@ -104,6 +104,13 @@ async function initDB() {
     EXCEPTION WHEN duplicate_column THEN NULL;
     END $$;
   `);
+  // Migration: add images JSONB column to containers
+  await pool.query(`
+    DO $$ BEGIN
+      ALTER TABLE containers ADD COLUMN IF NOT EXISTS images JSONB DEFAULT '[]';
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$;
+  `);
   console.log('✅ Database initialized');
 }
 
@@ -308,6 +315,81 @@ app.delete('/api/containers/:id', async (req, res) => {
     }
     await pool.query('DELETE FROM containers WHERE id=$1', [req.params.id]);
     res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/containers/:id', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT c.*, l.name as location_name,
+        COUNT(i.id) as item_count
+      FROM containers c
+      LEFT JOIN locations l ON c.location_id = l.id
+      LEFT JOIN items i ON (i.container_id = c.id OR (i.bin = c.name AND i.location_id = c.location_id))
+      WHERE c.id = $1
+      GROUP BY c.id, l.name
+    `, [req.params.id]);
+    if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(result.rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/containers/:id/images', upload.single('image'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No image provided' });
+  if (!cloudinaryEnabled) return res.status(500).json({ error: 'Image storage not configured' });
+  try {
+    const url = await uploadToCloudinary(req.file.buffer, req.file.mimetype);
+    const result = await pool.query(
+      `UPDATE containers SET images = COALESCE(images, '[]'::jsonb) || $1::jsonb WHERE id = $2 RETURNING *`,
+      [JSON.stringify([url]), req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Container not found' });
+    res.json({ image_url: url, images: result.rows[0].images });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/containers/:id/images', async (req, res) => {
+  const { image_url } = req.body;
+  if (!image_url) return res.status(400).json({ error: 'image_url required' });
+  try {
+    const result = await pool.query(
+      `UPDATE containers
+       SET images = COALESCE(
+         (SELECT jsonb_agg(elem) FROM jsonb_array_elements(COALESCE(images, '[]'::jsonb)) AS elem WHERE elem #>> '{}' != $1),
+         '[]'::jsonb
+       )
+       WHERE id = $2 RETURNING *`,
+      [image_url, req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Container not found' });
+    res.json({ images: result.rows[0].images });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/containers/:id/empty', async (req, res) => {
+  const { move_to } = req.body;
+  try {
+    if (move_to) {
+      const target = await pool.query('SELECT * FROM containers WHERE id=$1', [move_to]);
+      if (!target.rows.length) return res.status(400).json({ error: 'Target container not found' });
+      const t = target.rows[0];
+      await pool.query(
+        'UPDATE items SET container_id=$1, shelf=$2, bin=$3, location_id=$4 WHERE container_id=$5',
+        [t.id, t.shelf || '', t.bin || t.name || '', t.location_id, req.params.id]
+      );
+    } else {
+      await pool.query(
+        "UPDATE items SET container_id=NULL, bin='' WHERE container_id=$1",
+        [req.params.id]
+      );
+    }
+    // Clear images
+    const result = await pool.query(
+      "UPDATE containers SET images='[]'::jsonb WHERE id=$1 RETURNING *",
+      [req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Container not found' });
+    res.json({ success: true, container: result.rows[0] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

@@ -15,10 +15,22 @@ export const deleteShelf = (locationId, name) =>
   API.delete(`/locations/${locationId}/shelves/${encodeURIComponent(name)}`).then(r => r.data);
 
 export const getContainers = (params) => API.get('/containers', { params }).then(r => r.data);
+export const getContainer = (id) => API.get(`/containers/${id}`).then(r => r.data);
 export const createContainer = (data) => API.post('/containers', data).then(r => r.data);
 export const updateContainer = (id, data) => API.put(`/containers/${id}`, data).then(r => r.data);
 export const deleteContainer = (id, moveTo) =>
   API.delete(`/containers/${id}`, { params: moveTo ? { move_to: moveTo } : {} }).then(r => r.data);
+export const addContainerImage = (id, file) => {
+  const fd = new FormData();
+  fd.append('image', file);
+  return API.post(`/containers/${id}/images`, fd, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }).then(r => r.data);
+};
+export const removeContainerImage = (id, image_url) =>
+  API.delete(`/containers/${id}/images`, { data: { image_url } }).then(r => r.data);
+export const emptyContainer = (id, moveToId) =>
+  API.post(`/containers/${id}/empty`, moveToId ? { move_to: moveToId } : {}).then(r => r.data);
 
 export const getItems = (params) => API.get('/items', { params }).then(r => r.data);
 export const getItem = (id) => API.get(`/items/${id}`).then(r => r.data);
