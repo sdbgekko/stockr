@@ -69,11 +69,102 @@ function ContainerModal({ container, locations, onSave, onClose }) {
   );
 }
 
+function DeleteContainerModal({ container, allContainers, onConfirm, onClose }) {
+  const [action, setAction] = useState('unassign');
+  const [moveTo, setMoveTo] = useState('');
+  const itemCount = parseInt(container.item_count) || 0;
+  const otherContainers = allContainers.filter(c => c.id !== container.id);
+
+  const grouped = {};
+  otherContainers.forEach(c => {
+    const key = c.location_name || 'No Location';
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(c);
+  });
+
+  return (
+    <Portal>
+      <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+        <div className="modal">
+          <div className="modal-handle" />
+          <div className="modal-title">Delete "{container.name}"</div>
+
+          <div style={{
+            background: 'rgba(239,68,68,0.1)',
+            border: '1px solid rgba(239,68,68,0.25)',
+            borderRadius: 'var(--radius)',
+            padding: '12px 14px',
+            marginBottom: 20,
+            fontSize: 13,
+            color: 'var(--text)'
+          }}>
+            This bin contains <strong>{itemCount} item{itemCount !== 1 ? 's' : ''}</strong>. Choose what to do with them:
+          </div>
+
+          <label style={{
+            display: 'flex', alignItems: 'flex-start', gap: 10,
+            padding: '12px 14px', marginBottom: 8,
+            background: action === 'unassign' ? 'var(--surface2)' : 'transparent',
+            borderRadius: 'var(--radius)',
+            border: `1px solid ${action === 'unassign' ? 'var(--accent)' : 'var(--border)'}`,
+            cursor: 'pointer'
+          }}>
+            <input type="radio" name="delete-action" value="unassign" checked={action === 'unassign'} onChange={() => setAction('unassign')} style={{ marginTop: 2 }} />
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>Remove bin assignment</div>
+              <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>Items stay in inventory but won't be assigned to any bin</div>
+            </div>
+          </label>
+
+          <label style={{
+            display: 'flex', alignItems: 'flex-start', gap: 10,
+            padding: '12px 14px', marginBottom: 8,
+            background: action === 'move' ? 'var(--surface2)' : 'transparent',
+            borderRadius: 'var(--radius)',
+            border: `1px solid ${action === 'move' ? 'var(--accent)' : 'var(--border)'}`,
+            cursor: 'pointer',
+            opacity: otherContainers.length === 0 ? 0.4 : 1
+          }}>
+            <input type="radio" name="delete-action" value="move" checked={action === 'move'} onChange={() => setAction('move')} disabled={otherContainers.length === 0} style={{ marginTop: 2 }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>Move items to another bin</div>
+              <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>Transfer all {itemCount} item{itemCount !== 1 ? 's' : ''} to a different bin</div>
+            </div>
+          </label>
+
+          {action === 'move' && otherContainers.length > 0 && (
+            <div className="form-group" style={{ marginTop: 4, marginBottom: 20, paddingLeft: 30 }}>
+              <select className="form-select" value={moveTo} onChange={e => setMoveTo(e.target.value)}>
+                <option value="">— Select target bin —</option>
+                {Object.entries(grouped).map(([locName, bins]) => (
+                  <optgroup key={locName} label={locName}>
+                    {bins.map(b => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}{b.shelf ? ` (Shelf ${b.shelf})` : ''}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 12 }}>
+            <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
+            <button className="btn btn-danger" style={{ flex: 2 }} onClick={() => onConfirm(action === 'move' ? moveTo : null)} disabled={action === 'move' && !moveTo}>Delete Bin</button>
+          </div>
+        </div>
+      </div>
+    </Portal>
+  );
+}
+
 export default function ContainersPage() {
   const [containers, setContainers] = useState([]);
   const [locations, setLocations] = useState([]);
   const [modal, setModal] = useState(null); // null | 'new' | container obj
   const [qrModal, setQrModal] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const load = async () => {
     const [c, l] = await Promise.all([getContainers(), getLocations()]);
@@ -90,11 +181,14 @@ export default function ContainersPage() {
     load();
   };
 
-  const handleDelete = async (c) => {
-    if (!window.confirm(`Delete "${c.name}"?`)) return;
-    await deleteContainer(c.id);
-    toast.success('Deleted');
-    load();
+  const handleDelete = (c) => {
+    const itemCount = parseInt(c.item_count) || 0;
+    if (itemCount === 0) {
+      if (!window.confirm(`Delete "${c.name}"?`)) return;
+      deleteContainer(c.id).then(() => { toast.success('Deleted'); load(); });
+    } else {
+      setDeleteTarget(c);
+    }
   };
 
   return (
@@ -153,6 +247,20 @@ export default function ContainersPage() {
           data={qrModal.data}
           title={qrModal.title}
           onClose={() => setQrModal(null)}
+        />
+      )}
+
+      {deleteTarget && (
+        <DeleteContainerModal
+          container={deleteTarget}
+          allContainers={containers}
+          onConfirm={async (moveTo) => {
+            await deleteContainer(deleteTarget.id, moveTo);
+            toast.success('Deleted');
+            setDeleteTarget(null);
+            load();
+          }}
+          onClose={() => setDeleteTarget(null)}
         />
       )}
     </div>
