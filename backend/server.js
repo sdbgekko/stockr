@@ -110,8 +110,68 @@ async function initDB() {
 // ─── Locations ────────────────────────────────────────────────────────────────
 app.get('/api/locations', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM locations ORDER BY name');
+    const result = await pool.query(`
+      SELECT l.*,
+        COALESCE(ic.item_count, 0) AS total_items,
+        COALESCE(cc.bin_count, 0) AS total_bins
+      FROM locations l
+      LEFT JOIN (
+        SELECT location_id, COUNT(*) AS item_count FROM items WHERE location_id IS NOT NULL GROUP BY location_id
+      ) ic ON ic.location_id = l.id
+      LEFT JOIN (
+        SELECT location_id, COUNT(*) AS bin_count FROM containers WHERE location_id IS NOT NULL GROUP BY location_id
+      ) cc ON cc.location_id = l.id
+      ORDER BY l.name
+    `);
     res.json(result.rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/locations/:id', async (req, res) => {
+  try {
+    const locResult = await pool.query('SELECT * FROM locations WHERE id=$1', [req.params.id]);
+    if (!locResult.rows.length) return res.status(404).json({ error: 'Not found' });
+    const location = locResult.rows[0];
+
+    const [itemStats, binStats, containersResult] = await Promise.all([
+      pool.query(
+        `SELECT COALESCE(shelf, '') AS shelf, COUNT(*) AS item_count FROM items WHERE location_id=$1 GROUP BY COALESCE(shelf, '')`,
+        [req.params.id]
+      ),
+      pool.query(
+        `SELECT COALESCE(shelf, '') AS shelf, COUNT(*) AS bin_count FROM containers WHERE location_id=$1 GROUP BY COALESCE(shelf, '')`,
+        [req.params.id]
+      ),
+      pool.query(
+        `SELECT c.*, COUNT(i.id) as item_count
+         FROM containers c
+         LEFT JOIN items i ON (i.container_id = c.id OR (i.bin = c.name AND i.location_id = c.location_id))
+         WHERE c.location_id = $1
+         GROUP BY c.id
+         ORDER BY c.shelf, c.name`,
+        [req.params.id]
+      ),
+    ]);
+
+    const shelfStats = {};
+    for (const row of itemStats.rows) {
+      shelfStats[row.shelf] = { item_count: parseInt(row.item_count), bin_count: 0 };
+    }
+    for (const row of binStats.rows) {
+      if (!shelfStats[row.shelf]) shelfStats[row.shelf] = { item_count: 0, bin_count: 0 };
+      shelfStats[row.shelf].bin_count = parseInt(row.bin_count);
+    }
+
+    const total_items = itemStats.rows.reduce((sum, r) => sum + parseInt(r.item_count), 0);
+    const total_bins = binStats.rows.reduce((sum, r) => sum + parseInt(r.bin_count), 0);
+
+    res.json({
+      ...location,
+      shelf_stats: shelfStats,
+      total_items,
+      total_bins,
+      containers: containersResult.rows,
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -140,6 +200,43 @@ app.put('/api/locations/:id', async (req, res) => {
 app.delete('/api/locations/:id', async (req, res) => {
   try {
     await pool.query('DELETE FROM locations WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Shelf Management ────────────────────────────────────────────────────────
+app.post('/api/locations/:id/shelves', async (req, res) => {
+  const { name } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Shelf name required' });
+  const trimmed = name.trim();
+  if (trimmed.includes(',')) return res.status(400).json({ error: 'Shelf name cannot contain commas' });
+  try {
+    const loc = await pool.query('SELECT shelves FROM locations WHERE id=$1', [req.params.id]);
+    if (!loc.rows.length) return res.status(404).json({ error: 'Location not found' });
+    const existing = (loc.rows[0].shelves || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (existing.includes(trimmed)) return res.status(409).json({ error: 'Shelf already exists' });
+    const updated = [...existing, trimmed].join(', ');
+    const result = await pool.query('UPDATE locations SET shelves=$1 WHERE id=$2 RETURNING *', [updated, req.params.id]);
+    res.json(result.rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/locations/:id/shelves/:name', async (req, res) => {
+  const shelfName = decodeURIComponent(req.params.name);
+  try {
+    const loc = await pool.query('SELECT shelves FROM locations WHERE id=$1', [req.params.id]);
+    if (!loc.rows.length) return res.status(404).json({ error: 'Location not found' });
+    const existing = (loc.rows[0].shelves || '').split(',').map(s => s.trim()).filter(Boolean);
+    const filtered = existing.filter(s => s !== shelfName);
+    const updated = filtered.join(', ');
+
+    // Clear shelf references from items and containers, remove from shelves string and shelf_images
+    await Promise.all([
+      pool.query("UPDATE items SET shelf='' WHERE location_id=$1 AND shelf=$2", [req.params.id, shelfName]),
+      pool.query("UPDATE containers SET shelf='' WHERE location_id=$1 AND shelf=$2", [req.params.id, shelfName]),
+      pool.query('UPDATE locations SET shelves=$1, shelf_images = COALESCE(shelf_images, \'{}\'::jsonb) - $2 WHERE id=$3', [updated, shelfName, req.params.id]),
+    ]);
+
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

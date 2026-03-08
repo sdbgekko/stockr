@@ -9,6 +9,10 @@ export const getLocations = () => API.get('/locations').then(r => r.data);
 export const createLocation = (data) => API.post('/locations', data).then(r => r.data);
 export const updateLocation = (id, data) => API.put(`/locations/${id}`, data).then(r => r.data);
 export const deleteLocation = (id) => API.delete(`/locations/${id}`).then(r => r.data);
+export const getLocation = (id) => API.get(`/locations/${id}`).then(r => r.data);
+export const addShelf = (locationId, name) => API.post(`/locations/${locationId}/shelves`, { name }).then(r => r.data);
+export const deleteShelf = (locationId, name) =>
+  API.delete(`/locations/${locationId}/shelves/${encodeURIComponent(name)}`).then(r => r.data);
 
 export const getContainers = (params) => API.get('/containers', { params }).then(r => r.data);
 export const createContainer = (data) => API.post('/containers', data).then(r => r.data);
