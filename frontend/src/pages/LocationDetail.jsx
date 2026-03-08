@@ -199,7 +199,8 @@ export default function LocationDetail() {
           </div>
         ) : (
           containers.map(c => (
-            <div key={c.id} className="card" style={{ margin: '0 0 10px', padding: 14 }}>
+            <div key={c.id} className="card" style={{ margin: '0 0 10px', padding: 14, cursor: 'pointer' }}
+              onClick={() => navigate(`/containers/${c.id}`)}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 15 }}>{c.name}</div>

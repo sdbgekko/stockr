@@ -6,6 +6,7 @@ import ContainersPage from './pages/ContainersPage';
 import LocationsPage from './pages/LocationsPage';
 import LocationDetail from './pages/LocationDetail';
 import ShelfDetail from './pages/ShelfDetail';
+import BinDetail from './pages/BinDetail';
 import ScanPage from './pages/ScanPage';
 import './App.css';
 
@@ -47,6 +48,7 @@ export default function App() {
             <Route path="/scan" element={<ScanPage />} />
             <Route path="/items" element={<ItemsPage />} />
             <Route path="/containers" element={<ContainersPage />} />
+            <Route path="/containers/:id" element={<BinDetail />} />
             <Route path="/locations" element={<LocationsPage />} />
             <Route path="/locations/:id" element={<LocationDetail />} />
             <Route path="/locations/:id/shelves/:shelf" element={<ShelfDetail />} />

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { getContainers, createContainer, updateContainer, deleteContainer, getLocations } from '../utils/api';
 import QRModal from '../components/QRModal';
@@ -218,6 +218,7 @@ export default function ContainersPage() {
   const [modal, setModal] = useState(null); // null | 'new' | container obj
   const [qrModal, setQrModal] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const navigate = useNavigate();
 
   const load = async () => {
     const [c, l] = await Promise.all([getContainers(), getLocations()]);
@@ -259,7 +260,7 @@ export default function ContainersPage() {
       ) : (
         <div className="item-list">
           {containers.map(c => (
-            <div key={c.id} className="card" style={{ margin: '0 16px', marginBottom: 10, cursor: 'pointer' }} onClick={() => setModal(c)}>
+            <div key={c.id} className="card" style={{ margin: '0 16px', marginBottom: 10, cursor: 'pointer' }} onClick={() => navigate(`/containers/${c.id}`)}>
               <div className="card-header">
                 <div>
                   <div className="card-title">{c.name}</div>

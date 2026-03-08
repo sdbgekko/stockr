@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { getLocation, getItems, getContainers } from '../utils/api';
 import QRModal from '../components/QRModal';
 
 export default function ShelfDetail() {
   const { id, shelf } = useParams();
+  const navigate = useNavigate();
   const shelfName = decodeURIComponent(shelf);
   const [location, setLocation] = useState(null);
   const [items, setItems] = useState([]);
@@ -70,7 +71,8 @@ export default function ShelfDetail() {
             Bins ({bins.length})
           </div>
           {bins.map(c => (
-            <div key={c.id} className="card" style={{ margin: '0 0 10px', padding: 14 }}>
+            <div key={c.id} className="card" style={{ margin: '0 0 10px', padding: 14, cursor: 'pointer' }}
+              onClick={() => navigate(`/containers/${c.id}`)}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 15 }}>{c.name}</div>
