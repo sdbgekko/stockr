@@ -14,9 +14,13 @@ function ContainerModal({ container, locations, onSave, onClose }) {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const selectedLocation = locations.find(l => String(l.id) === String(form.location_id));
-  const availableShelves = selectedLocation?.shelves
+  const locationShelves = selectedLocation?.shelves
     ? selectedLocation.shelves.split(',').map(s => s.trim()).filter(Boolean)
     : [];
+  // Always include the container's current shelf so it shows as selected
+  const availableShelves = form.shelf && !locationShelves.includes(form.shelf)
+    ? [...locationShelves, form.shelf]
+    : locationShelves;
 
   const handleSave = async () => {
     if (!form.name.trim()) return;
