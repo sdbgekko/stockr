@@ -191,12 +191,24 @@ app.put('/api/containers/:id', async (req, res) => {
 });
 
 app.delete('/api/containers/:id', async (req, res) => {
+  const { move_to } = req.query;
   try {
-    // Clear container reference and bin from items in this container
-    await pool.query(
-      "UPDATE items SET container_id=NULL, bin='' WHERE container_id=$1",
-      [req.params.id]
-    );
+    if (move_to) {
+      // Move items to the target container, syncing shelf/location/bin
+      const target = await pool.query('SELECT * FROM containers WHERE id=$1', [move_to]);
+      if (!target.rows.length) return res.status(400).json({ error: 'Target container not found' });
+      const t = target.rows[0];
+      await pool.query(
+        'UPDATE items SET container_id=$1, shelf=$2, bin=$3, location_id=$4 WHERE container_id=$5',
+        [t.id, t.shelf || '', t.bin || t.name || '', t.location_id, req.params.id]
+      );
+    } else {
+      // Default: clear container reference and bin from items
+      await pool.query(
+        "UPDATE items SET container_id=NULL, bin='' WHERE container_id=$1",
+        [req.params.id]
+      );
+    }
     await pool.query('DELETE FROM containers WHERE id=$1', [req.params.id]);
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
