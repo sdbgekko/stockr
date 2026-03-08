@@ -181,6 +181,11 @@ app.put('/api/containers/:id', async (req, res) => {
       'UPDATE containers SET name=$1, location_id=$2, shelf=$3, bin=$4, description=$5 WHERE id=$6 RETURNING *',
       [name, location_id || null, shelf, bin, description, req.params.id]
     );
+    // When a bin moves shelf/location, update all its items to match
+    await pool.query(
+      'UPDATE items SET shelf=$1, location_id=$2 WHERE container_id=$3',
+      [shelf || '', location_id || null, req.params.id]
+    );
     res.json(result.rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
