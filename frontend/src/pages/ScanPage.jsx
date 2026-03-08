@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { analyzeImage, getLocations, getContainers, createItem } from '../utils/api';
 import ItemForm from '../components/ItemForm';
+import QRScannerModal from '../components/QRScannerModal';
 
 export default function ScanPage() {
   const navigate = useNavigate();
@@ -14,11 +15,7 @@ export default function ScanPage() {
   const [qrResult, setQrResult] = useState(null);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
-  const qrVideoRef = useRef(null);
-  const qrCanvasRef = useRef(null);
   const fileRef = useRef(null);
-  const scanningRef = useRef(false);
-  const animFrameRef = useRef(null);
 
   // Multi-item checklist state
   const [checkedItems, setCheckedItems] = useState({});
@@ -87,57 +84,11 @@ export default function ScanPage() {
   const stopCamera = useCallback(() => {
     stream?.getTracks().forEach(t => t.stop());
     setStream(null);
-    scanningRef.current = false;
-    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
   }, [stream]);
 
-  const startQRScan = async () => {
-    try {
-      const s = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }
-      });
-      setStream(s);
-      setMode('qr');
-      scanningRef.current = true;
-      setTimeout(() => {
-        if (qrVideoRef.current) {
-          qrVideoRef.current.srcObject = s;
-          qrVideoRef.current.play();
-          scanQRFrame();
-        }
-      }, 200);
-    } catch (e) {
-      toast.error('Camera access denied.');
-    }
-  };
-
-  const scanQRFrame = () => {
-    if (!scanningRef.current) return;
-    const video = qrVideoRef.current;
-    const canvas = qrCanvasRef.current;
-    if (!video || !canvas || video.readyState !== video.HAVE_ENOUGH_DATA) {
-      animFrameRef.current = requestAnimationFrame(scanQRFrame);
-      return;
-    }
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const code = window.jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
-    if (code && code.data) {
-      scanningRef.current = false;
-      handleQRDetected(code.data);
-      return;
-    }
-    animFrameRef.current = requestAnimationFrame(scanQRFrame);
-  };
-
   const handleQRDetected = (data) => {
-    stopCamera();
     const parsed = parseQR(data);
     if (parsed) {
-      // Auto-navigate to the detail page
       let path;
       if (parsed.type === 'location' && parsed.shelf) {
         path = `/locations/${parsed.id}/shelves/${encodeURIComponent(parsed.shelf)}`;
@@ -149,19 +100,15 @@ export default function ScanPage() {
       toast.success('QR Code detected!');
       navigate(path);
     } else {
-      // Unknown QR — show result text
       setQrResult(data);
       setMode('idle');
       toast.success('QR Code detected!');
     }
   };
 
-  useEffect(() => {
-    return () => {
-      scanningRef.current = false;
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-    };
-  }, []);
+  const startQRScan = () => {
+    setMode('qr');
+  };
 
   const capturePhoto = useCallback(() => {
     const video = videoRef.current;
@@ -277,7 +224,6 @@ export default function ScanPage() {
       </div>
 
       <canvas ref={canvasRef} style={{ display: 'none' }} />
-      <canvas ref={qrCanvasRef} style={{ display: 'none' }} />
 
       {mode === 'idle' && !qrResult && (
         <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -313,26 +259,10 @@ export default function ScanPage() {
       )}
 
       {mode === 'qr' && (
-        <div>
-          <div className="scan-area">
-            <video ref={qrVideoRef} className="scan-video" autoPlay playsInline muted />
-            <div className="scan-overlay">
-              <div style={{ position: 'relative' }}>
-                <div className="scan-frame" />
-                <div className="scan-corner tl" />
-                <div className="scan-corner tr" />
-                <div className="scan-corner bl" />
-                <div className="scan-corner br" />
-              </div>
-            </div>
-            <div style={{ position: 'absolute', bottom: 20, left: 0, right: 0, textAlign: 'center', fontFamily: 'var(--mono)', fontSize: 12, color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
-              Point at a QR code
-            </div>
-          </div>
-          <div className="scan-actions" style={{ position: 'fixed', bottom: 'calc(var(--nav-h) + 12px)', left: 0, right: 0, padding: '0 16px', zIndex: 50 }}>
-            <button className="btn btn-ghost btn-full" onClick={reset}>Cancel</button>
-          </div>
-        </div>
+        <QRScannerModal
+          onDetected={handleQRDetected}
+          onClose={reset}
+        />
       )}
 
       {mode === 'camera' && (

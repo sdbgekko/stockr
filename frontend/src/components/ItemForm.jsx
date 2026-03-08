@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { getLocations, getContainers, uploadImage } from '../utils/api';
+import toast from 'react-hot-toast';
+import { getLocations, getContainers, getContainer, uploadImage } from '../utils/api';
+import QRScannerModal from './QRScannerModal';
 
 export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel }) {
   const [form, setForm] = useState({
@@ -21,6 +23,7 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
   const [uploading, setUploading] = useState(false);
   const [newShelfMode, setNewShelfMode] = useState(false);
   const [newBinMode, setNewBinMode] = useState(false);
+  const [scanTarget, setScanTarget] = useState(null); // null | 'shelf' | 'bin'
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -85,6 +88,67 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
       setImageUrl(URL.createObjectURL(file));
     } finally {
       setUploading(false);
+    }
+  };
+
+  const parseQR = (data) => {
+    const m = data.match(/^stockr:\/\/(location|container)\/(\d+)(\/shelf\/(.+))?$/);
+    if (m) return { type: m[1], id: m[2], shelf: m[4] || null };
+    return null;
+  };
+
+  const handleScanResult = async (data) => {
+    const parsed = parseQR(data);
+    if (!parsed) {
+      toast.error('Not a valid shelf/bin QR code');
+      return; // keep modal open for retry
+    }
+
+    if (scanTarget === 'shelf') {
+      if (parsed.type === 'location' && parsed.shelf) {
+        set('location_id', String(parsed.id));
+        set('shelf', parsed.shelf);
+        set('bin', ''); set('container_id', '');
+        setNewShelfMode(false); setNewBinMode(false);
+        toast.success(`Shelf "${parsed.shelf}" selected`);
+        setScanTarget(null);
+      } else if (parsed.type === 'location') {
+        set('location_id', String(parsed.id));
+        set('shelf', ''); set('bin', ''); set('container_id', '');
+        setNewShelfMode(false); setNewBinMode(false);
+        toast.success('Location selected');
+        setScanTarget(null);
+      } else {
+        toast.error('Scan a shelf QR code, not a bin');
+        return;
+      }
+    } else if (scanTarget === 'bin') {
+      if (parsed.type === 'container') {
+        try {
+          const c = await getContainer(parsed.id);
+          set('location_id', c.location_id ? String(c.location_id) : '');
+          set('shelf', c.shelf || '');
+          set('bin', c.bin || c.name || '');
+          set('container_id', String(c.id));
+          setNewShelfMode(false); setNewBinMode(false);
+          toast.success(`Bin "${c.name}" selected`);
+          setScanTarget(null);
+        } catch {
+          toast.error('Could not find that bin');
+          return;
+        }
+      } else if (parsed.type === 'location' && parsed.shelf) {
+        // Scanned a shelf QR while in bin mode — still useful, set location+shelf
+        set('location_id', String(parsed.id));
+        set('shelf', parsed.shelf);
+        set('bin', ''); set('container_id', '');
+        setNewShelfMode(false); setNewBinMode(false);
+        toast.success(`Shelf "${parsed.shelf}" selected — now pick a bin`);
+        setScanTarget(null);
+      } else {
+        toast.error('Scan a bin QR code');
+        return;
+      }
     }
   };
 
@@ -175,6 +239,7 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
                 <option value="">— None —</option>
                 {availableShelves.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
+              <button type="button" className="btn-icon" style={{ flexShrink: 0 }} onClick={() => setScanTarget('shelf')} title="Scan shelf QR">📷</button>
               <button type="button" className="btn-icon" style={{ flexShrink: 0 }} onClick={() => {
                 setNewShelfMode(true);
                 set('shelf', ''); set('bin', ''); set('container_id', '');
@@ -184,6 +249,7 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
           ) : (
             <div style={{ display: 'flex', gap: 6 }}>
               <input className="form-input" style={{ flex: 1 }} value={form.shelf} onChange={e => { set('shelf', e.target.value); set('bin', ''); set('container_id', ''); setNewBinMode(false); }} placeholder="New shelf name" autoFocus={newShelfMode} />
+              <button type="button" className="btn-icon" style={{ flexShrink: 0 }} onClick={() => setScanTarget('shelf')} title="Scan shelf QR">📷</button>
               {availableShelves.length > 0 && (
                 <button type="button" className="btn-icon" style={{ flexShrink: 0 }} onClick={() => { setNewShelfMode(false); set('shelf', ''); set('bin', ''); set('container_id', ''); }}>✕</button>
               )}
@@ -198,6 +264,7 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
                 <option value="">— None —</option>
                 {binsOnShelf.map(c => <option key={c.id} value={c.bin || c.name}>{c.name}</option>)}
               </select>
+              <button type="button" className="btn-icon" style={{ flexShrink: 0 }} onClick={() => setScanTarget('bin')} title="Scan bin QR">📷</button>
               <button type="button" className="btn-icon" style={{ flexShrink: 0 }} onClick={() => {
                 setNewBinMode(true);
                 set('bin', ''); set('container_id', '');
@@ -206,6 +273,7 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
           ) : (
             <div style={{ display: 'flex', gap: 6 }}>
               <input className="form-input" style={{ flex: 1 }} value={form.bin} onChange={e => set('bin', e.target.value)} placeholder={form.shelf ? 'New bin name' : ''} autoFocus={newBinMode} />
+              <button type="button" className="btn-icon" style={{ flexShrink: 0 }} onClick={() => setScanTarget('bin')} title="Scan bin QR">📷</button>
               {binsOnShelf.length > 0 && (
                 <button type="button" className="btn-icon" style={{ flexShrink: 0 }} onClick={() => { setNewBinMode(false); set('bin', ''); set('container_id', ''); }}>✕</button>
               )}
@@ -230,6 +298,14 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
           {saving ? 'Saving…' : '✓ Save Item'}
         </button>
       </div>
+
+      {scanTarget && (
+        <QRScannerModal
+          title={scanTarget === 'shelf' ? 'Scan Shelf QR' : 'Scan Bin QR'}
+          onDetected={handleScanResult}
+          onClose={() => setScanTarget(null)}
+        />
+      )}
     </div>
   );
 }
