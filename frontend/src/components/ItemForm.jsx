@@ -37,9 +37,13 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
 
   // Derive available shelves from selected location
   const selectedLocation = locations.find(l => String(l.id) === String(form.location_id));
-  const availableShelves = selectedLocation?.shelves
+  const locationShelves = selectedLocation?.shelves
     ? selectedLocation.shelves.split(',').map(s => s.trim()).filter(Boolean)
     : [];
+  // Always include the current shelf so it shows as selected
+  const availableShelves = form.shelf && !locationShelves.includes(form.shelf)
+    ? [...locationShelves, form.shelf]
+    : locationShelves;
 
   // Derive bins (containers) on the selected shelf
   const binsOnShelf = form.shelf
