@@ -162,7 +162,8 @@ export default function LocationDetail() {
           shelves.map(shelfName => {
             const stats = shelfStats[shelfName] || { item_count: 0, bin_count: 0 };
             return (
-              <div key={shelfName} className="card" style={{ margin: '0 0 10px', padding: 14 }}>
+              <div key={shelfName} className="card" style={{ margin: '0 0 10px', padding: 14, cursor: 'pointer' }}
+                onClick={() => navigate(`/locations/${location.id}/shelves/${encodeURIComponent(shelfName)}`)}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 15 }}>Shelf {shelfName}</div>
@@ -172,11 +173,11 @@ export default function LocationDetail() {
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button className="btn-icon" title="Shelf QR"
-                      onClick={() => setQrModal({ data: `stockr://location/${location.id}/shelf/${shelfName}`, title: `${location.name} — Shelf ${shelfName}` })}>
+                      onClick={(e) => { e.stopPropagation(); setQrModal({ data: `stockr://location/${location.id}/shelf/${shelfName}`, title: `${location.name} — Shelf ${shelfName}` }); }}>
                       ⬡
                     </button>
                     <button className="btn-icon btn-icon-danger" title="Delete shelf"
-                      onClick={() => handleDeleteShelf(shelfName)}>
+                      onClick={(e) => { e.stopPropagation(); handleDeleteShelf(shelfName); }}>
                       <TrashIcon />
                     </button>
                   </div>

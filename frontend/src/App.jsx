@@ -5,6 +5,7 @@ import ItemsPage from './pages/ItemsPage';
 import ContainersPage from './pages/ContainersPage';
 import LocationsPage from './pages/LocationsPage';
 import LocationDetail from './pages/LocationDetail';
+import ShelfDetail from './pages/ShelfDetail';
 import ScanPage from './pages/ScanPage';
 import './App.css';
 
@@ -48,6 +49,7 @@ export default function App() {
             <Route path="/containers" element={<ContainersPage />} />
             <Route path="/locations" element={<LocationsPage />} />
             <Route path="/locations/:id" element={<LocationDetail />} />
+            <Route path="/locations/:id/shelves/:shelf" element={<ShelfDetail />} />
           </Routes>
         </main>
         <Nav />
