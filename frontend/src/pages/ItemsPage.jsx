@@ -53,9 +53,8 @@ function ItemDetail({ item, onClose, onSaved, onDeleted }) {
           {item.description && <p style={{ color: 'var(--text2)', fontSize: 14, marginBottom: 12 }}>{item.description}</p>}
           <div style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text3)', lineHeight: 2 }}>
             {item.location_name && <div>📍 {item.location_name}</div>}
-            {item.container_name && <div>📦 {item.container_name}</div>}
             {(item.shelf || item.container_shelf) && <div>🗄 Shelf: {item.shelf || item.container_shelf}</div>}
-            {(item.bin || item.container_bin) && <div>🔲 Bin: {item.bin || item.container_bin}</div>}
+            {item.container_name && <div>📦 Bin: {item.container_name}</div>}
             {item.barcode && <div>🔖 {item.barcode}</div>}
           </div>
           {item.ai_labels?.length > 0 && (
@@ -136,9 +135,9 @@ export default function ItemsPage() {
               <div className="item-info">
                 <div className="item-name">{item.name}</div>
                 <div className="item-loc">
-                  {[item.location_name, item.container_name,
+                  {[item.location_name,
                     (item.shelf || item.container_shelf) && `Shelf ${item.shelf || item.container_shelf}`,
-                    (item.bin || item.container_bin) && `Bin ${item.bin || item.container_bin}`
+                    item.container_name
                   ].filter(Boolean).join(' › ') || 'No location'}
                 </div>
               </div>
