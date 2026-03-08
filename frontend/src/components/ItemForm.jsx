@@ -1,22 +1,25 @@
-import { useState, useEffect } from 'react';
-import { getLocations, getContainers } from '../utils/api';
+import { useState, useEffect, useRef } from 'react';
+import { getLocations, getContainers, uploadImage } from '../utils/api';
 
 export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel }) {
   const [form, setForm] = useState({
     name: initial.name || '',
     description: initial.description || '',
-    quantity: initial.quantity_hint || 1,
-    unit: 'each',
-    location_id: '',
-    container_id: '',
-    shelf: '',
-    bin: '',
-    barcode: '',
-    tags: (initial.labels || []).join(', '),
+    quantity: initial.quantity_hint || initial.quantity || 1,
+    unit: initial.unit || 'each',
+    location_id: initial.location_id || '',
+    container_id: initial.container_id || '',
+    shelf: initial.shelf || '',
+    bin: initial.bin || '',
+    barcode: initial.barcode || '',
+    tags: (initial.labels || initial.tags || []).join(', '),
   });
   const [locations, setLocations] = useState([]);
   const [containers, setContainers] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [imageUrl, setImageUrl] = useState(capturedImage || initial.image_url || null);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef(null);
 
   useEffect(() => {
     getLocations().then(setLocations).catch(console.error);
@@ -32,6 +35,21 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const result = await uploadImage(file);
+      setImageUrl(result.image_url);
+    } catch (err) {
+      // Fall back to local preview if upload fails
+      setImageUrl(URL.createObjectURL(file));
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!form.name.trim()) return;
     setSaving(true);
@@ -42,6 +60,7 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
         quantity: parseInt(form.quantity) || 1,
         location_id: form.location_id || null,
         container_id: form.container_id || null,
+        image_url: imageUrl || null,
         ai_labels: initial.labels || [],
         tags,
       });
@@ -52,10 +71,27 @@ export default function ItemForm({ initial = {}, capturedImage, onSave, onCancel
 
   return (
     <div style={{ padding: '0 16px 24px' }}>
-      {capturedImage && (
-        <div style={{ marginBottom: 16, borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border)' }}>
-          <img src={capturedImage} alt="" style={{ width: '100%', maxHeight: 160, objectFit: 'cover' }} />
+      <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoUpload} />
+      {imageUrl ? (
+        <div style={{ marginBottom: 16, borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border)', position: 'relative' }}>
+          <img src={imageUrl} alt="" style={{ width: '100%', maxHeight: 160, objectFit: 'cover' }} />
+          <button
+            className="btn btn-ghost btn-sm"
+            style={{ position: 'absolute', bottom: 8, right: 8, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+            onClick={() => fileRef.current?.click()}
+          >
+            {uploading ? 'Uploading…' : 'Change Photo'}
+          </button>
         </div>
+      ) : (
+        <button
+          className="btn btn-ghost btn-full"
+          style={{ marginBottom: 16, padding: '20px 0', border: '1px dashed var(--border)' }}
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+        >
+          {uploading ? 'Uploading…' : '📷 Add Photo'}
+        </button>
       )}
 
       <div className="form-group">
