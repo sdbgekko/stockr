@@ -391,6 +391,27 @@ body {
   margin-bottom: 8px;
 }
 
+/* ── Scan Checklist ── */
+.scan-check-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.scan-check-item:last-child { border-bottom: none; }
+.scan-checkbox {
+  width: 22px;
+  height: 22px;
+  margin-top: 2px;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
 /* ── Filter Row ── */
 .filter-row {
   display: flex;

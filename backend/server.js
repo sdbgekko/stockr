@@ -361,12 +361,12 @@ app.post('/api/analyze-image', upload.single('image'), async (req, res) => {
         },
         body: JSON.stringify({
           model: 'claude-opus-4-5',
-          max_tokens: 512,
+          max_tokens: 1024,
           messages: [{
             role: 'user',
             content: [
               { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
-              { type: 'text', text: 'Analyze this image for inventory purposes. Respond with JSON only: { "name": "best item name", "description": "brief description", "labels": ["tag1","tag2","tag3"], "quantity_hint": 1 }. If multiple items, describe the primary/most prominent one.' }
+              { type: 'text', text: 'Analyze this image for inventory purposes. Identify ALL distinct items visible. Respond with JSON only: { "items": [ { "name": "item name", "description": "brief description", "labels": ["tag1","tag2","tag3"], "quantity": 1 }, ... ] }. List each distinct item type separately. If you see multiples of the same item, use the quantity field.' }
             ]
           }]
         })
@@ -377,8 +377,9 @@ app.post('/api/analyze-image', upload.single('image'), async (req, res) => {
     const text = data.content?.[0]?.text || '{}';
     const clean = text.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean);
-    if (imageUrl) parsed.image_url = imageUrl;
-    res.json(parsed);
+    // Normalize to { items: [...], image_url } regardless of AI response shape
+    const items = Array.isArray(parsed) ? parsed : parsed.items || [parsed];
+    res.json({ items, image_url: imageUrl || null });
   } catch (e) {
     res.status(500).json({ error: 'AI analysis failed: ' + e.message });
   }
