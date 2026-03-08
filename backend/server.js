@@ -153,7 +153,7 @@ app.get('/api/containers', async (req, res) => {
         COUNT(i.id) as item_count
       FROM containers c
       LEFT JOIN locations l ON c.location_id = l.id
-      LEFT JOIN items i ON i.container_id = c.id
+      LEFT JOIN items i ON (i.container_id = c.id OR (i.bin = c.name AND i.location_id = c.location_id))
     `;
     const params = [];
     if (location_id) { query += ' WHERE c.location_id = $1'; params.push(location_id); }

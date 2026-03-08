@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { getLocations, getContainers, createLocation, updateLocation, deleteLocation, uploadImage } from '../utils/api';
 import QRModal from '../components/QRModal';
@@ -193,9 +194,12 @@ export default function LocationsPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <div>
-          <div className="page-title">LOCATIONS</div>
-          <div className="page-subtitle">{locations.length} places</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Link to="/" style={{ color: 'var(--text3)', fontSize: 18, textDecoration: 'none', lineHeight: 1, padding: 4 }}>←</Link>
+          <div>
+            <div className="page-title">LOCATIONS</div>
+            <div className="page-subtitle">{locations.length} places</div>
+          </div>
         </div>
         <button className="btn btn-primary btn-sm" onClick={() => setModal('new')}>+ Add</button>
       </div>

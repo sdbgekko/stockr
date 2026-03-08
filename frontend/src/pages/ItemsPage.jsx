@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { getItems, updateItem, deleteItem, getLocations, getContainers } from '../utils/api';
 import ItemForm from '../components/ItemForm';
@@ -98,9 +99,12 @@ export default function ItemsPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <div>
-          <div className="page-title">ITEMS</div>
-          <div className="page-subtitle">{items.length} found</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Link to="/" style={{ color: 'var(--text3)', fontSize: 18, textDecoration: 'none', lineHeight: 1, padding: 4 }}>←</Link>
+          <div>
+            <div className="page-title">ITEMS</div>
+            <div className="page-subtitle">{items.length} found</div>
+          </div>
         </div>
       </div>
 
