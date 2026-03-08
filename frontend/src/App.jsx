@@ -10,6 +10,7 @@ import ShelfDetail from './pages/ShelfDetail';
 import BinDetail from './pages/BinDetail';
 import ScanPage from './pages/ScanPage';
 import SettingsPage from './pages/SettingsPage';
+import QrLabelsPage from './pages/QrLabelsPage';
 import './App.css';
 
 function Nav() {
@@ -52,6 +53,7 @@ export default function App() {
             <Route path="/locations/:id" element={<LocationDetail />} />
             <Route path="/locations/:id/shelves/:shelf" element={<ShelfDetail />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/settings/qr-labels" element={<QrLabelsPage />} />
           </Routes>
         </main>
         <Nav />
