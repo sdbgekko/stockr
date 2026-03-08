@@ -1,9 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { analyzeImage, getLocations, getContainers, createItem } from '../utils/api';
 import ItemForm from '../components/ItemForm';
 
 export default function ScanPage() {
+  const navigate = useNavigate();
   const [mode, setMode] = useState('idle'); // idle | camera | qr | preview | form
   const [stream, setStream] = useState(null);
   const [aiResult, setAiResult] = useState(null);
@@ -132,9 +134,26 @@ export default function ScanPage() {
   };
 
   const handleQRDetected = (data) => {
-    setQrResult(data);
     stopCamera();
-    toast.success('QR Code detected!');
+    const parsed = parseQR(data);
+    if (parsed) {
+      // Auto-navigate to the detail page
+      let path;
+      if (parsed.type === 'location' && parsed.shelf) {
+        path = `/locations/${parsed.id}/shelves/${encodeURIComponent(parsed.shelf)}`;
+      } else if (parsed.type === 'location') {
+        path = `/locations/${parsed.id}`;
+      } else {
+        path = `/containers/${parsed.id}`;
+      }
+      toast.success('QR Code detected!');
+      navigate(path);
+    } else {
+      // Unknown QR — show result text
+      setQrResult(data);
+      setMode('idle');
+      toast.success('QR Code detected!');
+    }
   };
 
   useEffect(() => {
@@ -287,27 +306,7 @@ export default function ScanPage() {
           <div className="ai-preview">
             <div className="ai-label">QR Code Result</div>
             <div style={{ fontFamily: 'var(--mono)', fontSize: 14, wordBreak: 'break-all', marginBottom: 12 }}>{qrResult}</div>
-            {(() => {
-              const parsed = parseQR(qrResult);
-              if (parsed) {
-                return (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <div style={{ fontSize: 13, color: 'var(--text2)' }}>
-                      {parsed.type === 'location' ? '📍 Location' : '▣ Container'} #{parsed.id}
-                      {parsed.shelf && ` · Shelf ${parsed.shelf}`}
-                    </div>
-                    <a
-                      href={parsed.type === 'location' ? '/locations' : '/containers'}
-                      className="btn btn-primary btn-full"
-                      style={{ textDecoration: 'none', textAlign: 'center' }}
-                    >
-                      Go to {parsed.type === 'location' ? 'Locations' : 'Containers'}
-                    </a>
-                  </div>
-                );
-              }
-              return <div style={{ fontSize: 13, color: 'var(--text2)' }}>External or unknown QR code</div>;
-            })()}
+            <div style={{ fontSize: 13, color: 'var(--text2)' }}>External or unknown QR code</div>
           </div>
           <button className="btn btn-ghost btn-full" style={{ marginTop: 12 }} onClick={reset}>Scan Again</button>
         </div>
