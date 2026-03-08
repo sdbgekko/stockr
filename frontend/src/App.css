@@ -18,6 +18,18 @@
   --radius: 12px;
 }
 
+[data-theme="light"] {
+  --bg: #f5f5f7;
+  --surface: #ffffff;
+  --surface2: #f0f0f5;
+  --border: #e0e0e8;
+  --text: #1a1a2e;
+  --text2: #4a5568;
+  --text3: #94a3b8;
+  --accent: #00b894;
+  --accent2: #6c2bd9;
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
 body {
