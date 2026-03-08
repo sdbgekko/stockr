@@ -114,6 +114,8 @@ export default function ScanPage() {
     setMode('preview');
     try {
       const result = await analyzeImage(file);
+      // Use Cloudinary URL if returned, keeping blob URL as local preview fallback
+      if (result.image_url) setCapturedImage(result.image_url);
       setAiResult(result);
     } catch (e) {
       toast.error('AI analysis failed. Fill in manually.');
@@ -132,7 +134,7 @@ export default function ScanPage() {
   };
 
   const handleSave = async (data) => {
-    await createItem({ ...data, image_url: capturedImage });
+    await createItem(data);
     toast.success('Item saved!');
     setMode('idle');
     setAiResult(null);

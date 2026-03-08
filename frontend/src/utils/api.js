@@ -28,3 +28,11 @@ export const analyzeImage = (file) => {
     headers: { 'Content-Type': 'multipart/form-data' }
   }).then(r => r.data);
 };
+
+export const uploadImage = (file) => {
+  const fd = new FormData();
+  fd.append('image', file);
+  return API.post('/upload-image', fd, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }).then(r => r.data);
+};

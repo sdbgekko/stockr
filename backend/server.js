@@ -5,6 +5,7 @@ const { Pool } = require('pg');
 const multer = require('multer');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
+const cloudinary = require('cloudinary').v2;
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -24,6 +25,20 @@ app.use('/api/', limiter);
 
 // Multer for image uploads (in-memory)
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+// Cloudinary config (uses CLOUDINARY_URL env var automatically)
+const cloudinaryEnabled = !!process.env.CLOUDINARY_URL;
+if (cloudinaryEnabled) console.log('☁️  Cloudinary enabled');
+
+function uploadToCloudinary(buffer, mimetype) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { folder: 'stockr', resource_type: 'image', transformation: [{ width: 1200, height: 1200, crop: 'limit', quality: 'auto' }] },
+      (err, result) => err ? reject(err) : resolve(result.secure_url)
+    );
+    stream.end(buffer);
+  });
+}
 
 // ─── DB Init ──────────────────────────────────────────────────────────────────
 async function initDB() {
@@ -241,6 +256,18 @@ app.delete('/api/items/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── Image Upload ────────────────────────────────────────────────────────────
+app.post('/api/upload-image', upload.single('image'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No image provided' });
+  if (!cloudinaryEnabled) return res.status(500).json({ error: 'Image storage not configured' });
+  try {
+    const url = await uploadToCloudinary(req.file.buffer, req.file.mimetype);
+    res.json({ image_url: url });
+  } catch (e) {
+    res.status(500).json({ error: 'Upload failed: ' + e.message });
+  }
+});
+
 // ─── AI Image Analysis (via Claude) ──────────────────────────────────────────
 app.post('/api/analyze-image', upload.single('image'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No image provided' });
@@ -250,30 +277,35 @@ app.post('/api/analyze-image', upload.single('image'), async (req, res) => {
     const base64 = req.file.buffer.toString('base64');
     const mediaType = req.file.mimetype;
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-opus-4-5',
-        max_tokens: 512,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
-            { type: 'text', text: 'Analyze this image for inventory purposes. Respond with JSON only: { "name": "best item name", "description": "brief description", "labels": ["tag1","tag2","tag3"], "quantity_hint": 1 }. If multiple items, describe the primary/most prominent one.' }
-          ]
-        }]
+    // Upload to Cloudinary and run AI analysis in parallel
+    const [imageUrl, aiResponse] = await Promise.all([
+      cloudinaryEnabled ? uploadToCloudinary(req.file.buffer, req.file.mimetype) : Promise.resolve(null),
+      fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-opus-4-5',
+          max_tokens: 512,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+              { type: 'text', text: 'Analyze this image for inventory purposes. Respond with JSON only: { "name": "best item name", "description": "brief description", "labels": ["tag1","tag2","tag3"], "quantity_hint": 1 }. If multiple items, describe the primary/most prominent one.' }
+            ]
+          }]
+        })
       })
-    });
+    ]);
 
-    const data = await response.json();
+    const data = await aiResponse.json();
     const text = data.content?.[0]?.text || '{}';
     const clean = text.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean);
+    if (imageUrl) parsed.image_url = imageUrl;
     res.json(parsed);
   } catch (e) {
     res.status(500).json({ error: 'AI analysis failed: ' + e.message });
