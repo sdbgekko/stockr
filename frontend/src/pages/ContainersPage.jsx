@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { getContainers, createContainer, updateContainer, deleteContainer, getLocations } from '../utils/api';
 import QRModal from '../components/QRModal';
+import Portal from '../components/Portal';
 
 function ContainerModal({ container, locations, onSave, onClose }) {
   const [form, setForm] = useState({
@@ -23,10 +24,11 @@ function ContainerModal({ container, locations, onSave, onClose }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
-        <div className="modal-handle" />
-        <div className="modal-title">{container ? 'Edit Container' : 'New Container'}</div>
+    <Portal>
+      <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+        <div className="modal">
+          <div className="modal-handle" />
+          <div className="modal-title">{container ? 'Edit Container' : 'New Container'}</div>
         <div className="form-group">
           <label className="form-label">Name *</label>
           <input className="form-input" value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Blue Bin #3" />
@@ -57,8 +59,9 @@ function ContainerModal({ container, locations, onSave, onClose }) {
           <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
           <button className="btn btn-primary" style={{ flex: 2 }} onClick={handleSave} disabled={!form.name.trim()}>Save</button>
         </div>
+        </div>
       </div>
-    </div>
+    </Portal>
   );
 }
 

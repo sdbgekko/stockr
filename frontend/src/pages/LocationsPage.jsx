@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { getLocations, getContainers, createLocation, updateLocation, deleteLocation, uploadImage } from '../utils/api';
 import QRModal from '../components/QRModal';
 import SwipeableCard from '../components/SwipeableCard';
+import Portal from '../components/Portal';
 
 function LocationModal({ location, onSave, onClose }) {
   const [form, setForm] = useState({
@@ -61,9 +62,10 @@ function LocationModal({ location, onSave, onClose }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
-        <div className="modal-handle" />
+    <Portal>
+      <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+        <div className="modal">
+          <div className="modal-handle" />
         <div className="modal-title">{location ? 'Edit Location' : 'New Location'}</div>
 
         <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoUpload} />
@@ -145,8 +147,9 @@ function LocationModal({ location, onSave, onClose }) {
           <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
           <button className="btn btn-primary" style={{ flex: 2 }} onClick={handleSave} disabled={!form.name.trim()}>Save</button>
         </div>
+        </div>
       </div>
-    </div>
+    </Portal>
   );
 }
 

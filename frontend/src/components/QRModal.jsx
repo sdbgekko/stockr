@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import Portal from './Portal';
 
 export default function QRModal({ data, title, onClose }) {
   const imgRef = useRef(null);
@@ -42,21 +43,23 @@ export default function QRModal({ data, title, onClose }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
-        <div className="modal-handle" />
-        <div className="modal-title">{title || 'QR Code'}</div>
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '16px 0' }}>
-          <div ref={imgRef} />
-        </div>
-        <div style={{ textAlign: 'center', fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text3)', marginBottom: 16, wordBreak: 'break-all' }}>
-          {data}
-        </div>
-        <div style={{ display: 'flex', gap: 12 }}>
-          <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Close</button>
-          <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleDownload}>Download</button>
+    <Portal>
+      <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+        <div className="modal">
+          <div className="modal-handle" />
+          <div className="modal-title">{title || 'QR Code'}</div>
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '16px 0' }}>
+            <div ref={imgRef} />
+          </div>
+          <div style={{ textAlign: 'center', fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text3)', marginBottom: 16, wordBreak: 'break-all' }}>
+            {data}
+          </div>
+          <div style={{ display: 'flex', gap: 12 }}>
+            <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Close</button>
+            <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleDownload}>Download</button>
+          </div>
         </div>
       </div>
-    </div>
+    </Portal>
   );
 }
