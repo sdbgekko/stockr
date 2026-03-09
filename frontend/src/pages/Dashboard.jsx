@@ -64,7 +64,7 @@ export default function Dashboard() {
               ? `/locations/${item.location_id}`
               : '/items';
           return (
-            <div key={item.id} className="item-card" onClick={() => navigate('/items', { state: { openItemId: item.id } })}>
+            <div key={item.id} className="item-card" onClick={() => navigate(`/items?openId=${item.id}`)}>
               <div className="item-thumb">{item.image_url ? <img src={item.image_url} alt="" style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:8}} /> : '📦'}</div>
               <div className="item-info">
                 <div className="item-name">{item.name}</div>
