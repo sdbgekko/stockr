@@ -46,6 +46,7 @@ export const getItem = (id) => API.get(`/items/${id}`).then(r => r.data);
 export const createItem = (data) => API.post('/items', data).then(r => r.data);
 export const updateItem = (id, data) => API.put(`/items/${id}`, data).then(r => r.data);
 export const deleteItem = (id) => API.delete(`/items/${id}`).then(r => r.data);
+export const batchUpdateItems = (updates) => API.patch('/items/batch-update', { updates }).then(r => r.data);
 
 export const analyzeImage = (file) => {
   const fd = new FormData();

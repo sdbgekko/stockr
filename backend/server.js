@@ -574,6 +574,26 @@ app.delete('/api/items/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── Batch Update Items (Quick Count) ─────────────────────────────────────────
+app.patch('/api/items/batch-update', async (req, res) => {
+  const { updates } = req.body; // [{ id, quantity }, ...]
+  if (!Array.isArray(updates) || updates.length === 0) {
+    return res.status(400).json({ error: 'updates array required' });
+  }
+  try {
+    const results = [];
+    for (const { id, quantity } of updates) {
+      if (id == null || quantity == null) continue;
+      const result = await pool.query(
+        'UPDATE items SET quantity=$1, updated_at=NOW() WHERE id=$2 RETURNING *',
+        [Math.max(0, parseInt(quantity)), id]
+      );
+      if (result.rows.length) results.push(result.rows[0]);
+    }
+    res.json({ updated: results.length, items: results });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── Image Upload ────────────────────────────────────────────────────────────
 app.post('/api/upload-image', upload.single('image'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No image provided' });

@@ -5,7 +5,9 @@ import {
   getContainer, getItems, getContainers, getLocations,
   addContainerImage, removeContainerImage, emptyContainer,
   updateContainer, deleteContainer, createContainer,
+  updateItem, deleteItem, batchUpdateItems,
 } from '../utils/api';
+import ItemForm from '../components/ItemForm';
 import QRModal from '../components/QRModal';
 import PhotoViewer from '../components/PhotoViewer';
 import Portal from '../components/Portal';
@@ -203,6 +205,233 @@ function EmptyBinModal({ container, allContainers, onConfirm, onClose }) {
   );
 }
 
+/* ── Inline ItemDetail (same pattern as ItemsPage) ── */
+function ItemDetail({ item, onClose, onSaved, onDeleted }) {
+  const [editing, setEditing] = useState(false);
+
+  const handleDelete = async () => {
+    if (!window.confirm(`Delete "${item.name}"?`)) return;
+    await deleteItem(item.id);
+    toast.success('Deleted');
+    onDeleted();
+  };
+
+  if (editing) {
+    return (
+      <Portal>
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setEditing(false)}>
+          <div className="modal">
+            <div className="modal-handle" />
+            <div className="modal-title">Edit Item</div>
+            <ItemForm
+              initial={{ ...item, labels: item.ai_labels || [] }}
+              capturedImage={item.image_url}
+              onSave={async (data) => { await updateItem(item.id, data); toast.success('Updated!'); setEditing(false); onSaved(); }}
+              onCancel={() => setEditing(false)}
+            />
+          </div>
+        </div>
+      </Portal>
+    );
+  }
+
+  return (
+    <Portal>
+      <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+        <div className="modal">
+          <div className="modal-handle" />
+          {item.image_url && (
+            <div style={{ marginBottom: 16, borderRadius: 12, overflow: 'hidden' }}>
+              <img src={item.image_url} alt="" style={{ width: '100%', maxHeight: 200, objectFit: 'cover' }} />
+            </div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+            <div>
+              <div className="modal-title" style={{ marginBottom: 4 }}>{item.name}</div>
+              <span className="badge badge-green">{'\u00d7'}{item.quantity} {item.unit}</span>
+            </div>
+          </div>
+          {item.description && <p style={{ color: 'var(--text2)', fontSize: 14, marginBottom: 12 }}>{item.description}</p>}
+          <div style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text3)', lineHeight: 2 }}>
+            {item.location_name && <div>{'\ud83d\udccd'} {item.location_name}</div>}
+            {(item.shelf || item.container_shelf) && <div>{'\ud83d\uddc4'} Shelf: {item.shelf || item.container_shelf}</div>}
+            {item.container_name && <div>{'\ud83d\udce6'} Bin: {item.container_name}</div>}
+            {item.barcode && <div>{'\ud83d\udd16'} {item.barcode}</div>}
+          </div>
+          {item.ai_labels?.length > 0 && (
+            <div style={{ marginTop: 12, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {item.ai_labels.map(l => <span key={l} className="badge badge-purple">{l}</span>)}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 12, marginTop: 20, alignItems: 'center' }}>
+            <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Close</button>
+            <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => setEditing(true)}>Edit</button>
+            <button className="btn-icon btn-icon-danger" title="Delete" onClick={handleDelete}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 4h12M5.33 4V2.67a1.33 1.33 0 011.34-1.34h2.66a1.33 1.33 0 011.34 1.34V4M12.67 4v9.33a1.33 1.33 0 01-1.34 1.34H4.67a1.33 1.33 0 01-1.34-1.34V4h9.34z"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </Portal>
+  );
+}
+
+/* ── Quick Count Modal ── */
+function QuickCountModal({ items: initialItems, onSave, onClose }) {
+  const [counts, setCounts] = useState(() => {
+    const map = {};
+    initialItems.forEach(item => { map[item.id] = item.quantity; });
+    return map;
+  });
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
+  const vibrate = () => {
+    if (navigator.vibrate) navigator.vibrate(10);
+  };
+
+  const adjust = (id, delta) => {
+    vibrate();
+    setCounts(prev => {
+      const next = Math.max(0, (prev[id] || 0) + delta);
+      return { ...prev, [id]: next };
+    });
+    setDirty(true);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const updates = initialItems
+        .filter(item => counts[item.id] !== item.quantity)
+        .map(item => ({ id: item.id, quantity: counts[item.id] }));
+      if (updates.length === 0) {
+        toast('No changes to save');
+        onClose();
+        return;
+      }
+      await onSave(updates);
+      toast.success(`Updated ${updates.length} item${updates.length !== 1 ? 's' : ''}`);
+      onClose();
+    } catch (e) {
+      toast.error('Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const changedCount = initialItems.filter(item => counts[item.id] !== item.quantity).length;
+
+  return (
+    <Portal>
+      <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+        <div className="modal" style={{ maxHeight: '95dvh' }}>
+          <div className="modal-handle" />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <div className="modal-title" style={{ marginBottom: 0 }}>Quick Count</div>
+            {changedCount > 0 && (
+              <span className="badge badge-amber">{changedCount} changed</span>
+            )}
+          </div>
+
+          {initialItems.length === 0 ? (
+            <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
+              No items to count
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
+              {initialItems.map(item => {
+                const qty = counts[item.id] ?? 0;
+                const changed = qty !== item.quantity;
+                return (
+                  <div key={item.id} style={{
+                    background: changed ? 'rgba(0,212,170,0.06)' : 'var(--surface2)',
+                    border: `1px solid ${changed ? 'var(--accent)' : 'var(--border)'}`,
+                    borderRadius: 'var(--radius)',
+                    padding: '12px 14px',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 15, color: 'var(--text)' }}>{item.name}</div>
+                        <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+                          was {item.quantity} {item.unit}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+                        <button
+                          onClick={() => adjust(item.id, -1)}
+                          style={{
+                            width: 44, height: 44,
+                            borderRadius: '12px 0 0 12px',
+                            border: '1px solid var(--border)',
+                            borderRight: 'none',
+                            background: 'var(--surface)',
+                            color: qty <= 0 ? 'var(--text3)' : 'var(--text)',
+                            fontSize: 22,
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}
+                          disabled={qty <= 0}
+                        >
+                          -
+                        </button>
+                        <div style={{
+                          width: 56, height: 44,
+                          background: 'var(--surface)',
+                          border: '1px solid var(--border)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontFamily: 'var(--mono)',
+                          fontSize: 20,
+                          fontWeight: 700,
+                          color: changed ? 'var(--accent)' : 'var(--text)',
+                        }}>
+                          {qty}
+                        </div>
+                        <button
+                          onClick={() => adjust(item.id, 1)}
+                          style={{
+                            width: 44, height: 44,
+                            borderRadius: '0 12px 12px 0',
+                            border: '1px solid var(--border)',
+                            borderLeft: 'none',
+                            background: 'var(--surface)',
+                            color: 'var(--text)',
+                            fontSize: 22,
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 12 }}>
+            <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
+            <button
+              className="btn btn-primary"
+              style={{ flex: 2 }}
+              onClick={handleSave}
+              disabled={saving || !dirty || changedCount === 0}
+            >
+              {saving ? 'Saving...' : `Save All${changedCount > 0 ? ` (${changedCount})` : ''}`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Portal>
+  );
+}
+
 /* ── Main Component ── */
 export default function BinDetail() {
   const { id } = useParams();
@@ -219,6 +448,8 @@ export default function BinDetail() {
   const [editModal, setEditModal] = useState(false);
   const [emptyModal, setEmptyModal] = useState(false);
   const [qrModal, setQrModal] = useState(null);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [quickCount, setQuickCount] = useState(false);
 
   // Data for modals
   const [locations, setLocations] = useState([]);
@@ -320,19 +551,38 @@ export default function BinDetail() {
   const images = container.images || [];
   const itemCount = parseInt(container.item_count) || 0;
   const hasContent = itemCount > 0 || images.length > 0;
-  const subtitle = [container.location_name, container.shelf && `Shelf ${container.shelf}`].filter(Boolean).join(' · ') || 'No location';
+  const subtitle = [container.location_name, container.shelf && `Shelf ${container.shelf}`].filter(Boolean).join(' \u00b7 ') || 'No location';
 
   return (
     <div className="page">
       <div className="page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Link to="/containers" style={{ color: 'var(--text3)', fontSize: 18, textDecoration: 'none', lineHeight: 1, padding: 4 }}>←</Link>
+          <Link to="/containers" style={{ color: 'var(--text3)', fontSize: 18, textDecoration: 'none', lineHeight: 1, padding: 4 }}>{'\u2190'}</Link>
           <div>
             <div className="page-title">{container.name}</div>
             <div className="page-subtitle">{subtitle}</div>
           </div>
         </div>
         <button className="btn btn-ghost btn-sm" onClick={() => { loadModalData(); setEditModal(true); }}>Edit</button>
+      </div>
+
+      {/* Breadcrumb navigation */}
+      <div style={{ padding: '10px 16px 0', display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+        <Link to="/" style={{ color: 'var(--text3)', fontSize: 12, fontFamily: 'var(--mono)', textDecoration: 'none' }}>Home</Link>
+        {container.location_id && container.location_name && (
+          <>
+            <span style={{ color: 'var(--text3)', fontSize: 12, fontFamily: 'var(--mono)' }}>/</span>
+            <Link to={`/locations/${container.location_id}`} style={{ color: 'var(--text3)', fontSize: 12, fontFamily: 'var(--mono)', textDecoration: 'none' }}>{container.location_name}</Link>
+          </>
+        )}
+        {container.shelf && container.location_id && (
+          <>
+            <span style={{ color: 'var(--text3)', fontSize: 12, fontFamily: 'var(--mono)' }}>/</span>
+            <Link to={`/locations/${container.location_id}/shelves/${encodeURIComponent(container.shelf)}`} style={{ color: 'var(--text3)', fontSize: 12, fontFamily: 'var(--mono)', textDecoration: 'none' }}>Shelf {container.shelf}</Link>
+          </>
+        )}
+        <span style={{ color: 'var(--text3)', fontSize: 12, fontFamily: 'var(--mono)' }}>/</span>
+        <span style={{ color: 'var(--text2)', fontSize: 12, fontFamily: 'var(--mono)', fontWeight: 600 }}>{container.name}</span>
       </div>
 
       {/* Description */}
@@ -390,20 +640,20 @@ export default function BinDetail() {
           </div>
         ) : (
           items.map(item => (
-            <div key={item.id} className="item-card">
+            <div key={item.id} className="item-card" onClick={() => setSelectedItem(item)}>
               <div className="item-thumb">
                 {item.image_url
                   ? <img src={item.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8 }} />
-                  : '📦'}
+                  : '\ud83d\udce6'}
               </div>
               <div className="item-info">
                 <div className="item-name">{item.name}</div>
                 <div className="item-loc">
                   {item.location_name || 'No location'}
-                  {item.shelf ? ` · Shelf ${item.shelf}` : ''}
+                  {item.shelf ? ` \u00b7 Shelf ${item.shelf}` : ''}
                 </div>
               </div>
-              <div className="item-qty">×{item.quantity}</div>
+              <div className="item-qty">{'\u00d7'}{item.quantity}</div>
             </div>
           ))
         )}
@@ -411,6 +661,12 @@ export default function BinDetail() {
 
       {/* Action buttons */}
       <div style={{ padding: '0 16px 32px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {items.length > 0 && (
+          <button className="btn btn-primary" style={{ width: '100%' }}
+            onClick={() => setQuickCount(true)}>
+            Count
+          </button>
+        )}
         {hasContent && (
           <button className="btn btn-ghost" style={{ width: '100%', color: 'var(--warn, #f59e0b)' }}
             onClick={() => { loadModalData(); setEmptyModal(true); }}>
@@ -464,6 +720,34 @@ export default function BinDetail() {
           data={qrModal.data}
           title={qrModal.title}
           onClose={() => setQrModal(null)}
+        />
+      )}
+
+      {/* Item detail modal */}
+      {selectedItem && (
+        <ItemDetail
+          item={selectedItem}
+          onClose={() => setSelectedItem(null)}
+          onSaved={() => { setSelectedItem(null); load(); }}
+          onDeleted={() => { setSelectedItem(null); load(); }}
+        />
+      )}
+
+      {/* Quick Count modal */}
+      {quickCount && (
+        <QuickCountModal
+          items={items}
+          onSave={async (updates) => {
+            // Optimistic UI: update local state immediately
+            setItems(prev => prev.map(item => {
+              const update = updates.find(u => u.id === item.id);
+              return update ? { ...item, quantity: update.quantity } : item;
+            }));
+            // Sync in background
+            await batchUpdateItems(updates);
+            load();
+          }}
+          onClose={() => setQuickCount(false)}
         />
       )}
     </div>

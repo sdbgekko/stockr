@@ -96,6 +96,15 @@ export default function LocationDetail() {
         <button className="btn btn-ghost btn-sm" onClick={() => setEditModal(true)}>Edit</button>
       </div>
 
+      {/* Breadcrumb navigation */}
+      <div style={{ padding: '10px 16px 0', display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+        <Link to="/" style={{ color: 'var(--text3)', fontSize: 12, fontFamily: 'var(--mono)', textDecoration: 'none' }}>Home</Link>
+        <span style={{ color: 'var(--text3)', fontSize: 12, fontFamily: 'var(--mono)' }}>/</span>
+        <Link to="/locations" style={{ color: 'var(--text3)', fontSize: 12, fontFamily: 'var(--mono)', textDecoration: 'none' }}>Locations</Link>
+        <span style={{ color: 'var(--text3)', fontSize: 12, fontFamily: 'var(--mono)' }}>/</span>
+        <span style={{ color: 'var(--text2)', fontSize: 12, fontFamily: 'var(--mono)', fontWeight: 600 }}>{location.name}</span>
+      </div>
+
       {/* Location image + description */}
       {location.image_url && (
         <div style={{ margin: '0 16px 16px', borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border)' }}>
