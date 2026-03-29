@@ -5,6 +5,7 @@ import { getStats, getItems } from '../utils/api';
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [recent, setRecent] = useState([]);
+  const [selectedItem, setSelectedItem] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -64,7 +65,7 @@ export default function Dashboard() {
               ? `/locations/${item.location_id}`
               : '/items';
           return (
-            <div key={item.id} className="item-card" onClick={() => navigate('/items', { state: { openItemId: item.id } })}>
+            <div key={item.id} className="item-card" onClick={() => setSelectedItem(item)}>
               <div className="item-thumb">{item.image_url ? <img src={item.image_url} alt="" style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:8}} /> : '📦'}</div>
               <div className="item-info">
                 <div className="item-name">{item.name}</div>
@@ -77,6 +78,41 @@ export default function Dashboard() {
           );
         })}
       </div>
+
+      {selectedItem && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setSelectedItem(null)}>
+          <div className="modal">
+            <div className="modal-handle" />
+            {selectedItem.image_url && (
+              <div style={{ marginBottom: 16, borderRadius: 12, overflow: 'hidden' }}>
+                <img src={selectedItem.image_url} alt="" style={{ width: '100%', maxHeight: 200, objectFit: 'cover' }} />
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+              <div>
+                <div className="modal-title" style={{ marginBottom: 4 }}>{selectedItem.name}</div>
+                <span className="badge badge-green">×{selectedItem.quantity} {selectedItem.unit}</span>
+              </div>
+            </div>
+            {selectedItem.description && <p style={{ color: 'var(--text2)', fontSize: 14, marginBottom: 12 }}>{selectedItem.description}</p>}
+            <div style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text3)', lineHeight: 2 }}>
+              {selectedItem.location_name && <div>📍 {selectedItem.location_name}</div>}
+              {(selectedItem.shelf || selectedItem.container_shelf) && <div>🗄 Shelf: {selectedItem.shelf || selectedItem.container_shelf}</div>}
+              {selectedItem.container_name && <div>📦 Bin: {selectedItem.container_name}</div>}
+              {selectedItem.barcode && <div>🔖 {selectedItem.barcode}</div>}
+            </div>
+            {selectedItem.ai_labels?.length > 0 && (
+              <div style={{ marginTop: 12, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {selectedItem.ai_labels.map(l => <span key={l} className="badge badge-purple">{l}</span>)}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
+              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setSelectedItem(null)}>Close</button>
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => { setSelectedItem(null); navigate('/items', { state: { openItemId: selectedItem.id } }); }}>Edit</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
