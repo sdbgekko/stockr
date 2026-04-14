@@ -1,690 +1,408 @@
+// ShelfSnap v2 — polymorphic entity model
+// See docs/DESIGN-v2.md
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
 const multer = require('multer');
 const rateLimit = require('express-rate-limit');
-const path = require('path');
 const cloudinary = require('cloudinary').v2;
+const QRCode = require('qrcode');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// PostgreSQL connection
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
 });
 
-// Middleware
 app.use(cors());
 app.use(express.json());
+app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 500 }));
 
-const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 500 });
-app.use('/api/', limiter);
-
-// Multer for image uploads (in-memory)
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
-// Cloudinary config (uses CLOUDINARY_URL env var automatically)
 const cloudinaryEnabled = !!process.env.CLOUDINARY_URL;
 if (cloudinaryEnabled) console.log('☁️  Cloudinary enabled');
 
-function uploadToCloudinary(buffer, mimetype) {
+function uploadToCloudinary(buffer) {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
-      { folder: 'stockr', resource_type: 'image', transformation: [{ width: 1200, height: 1200, crop: 'limit', quality: 'auto' }] },
+      { folder: 'shelfsnap', resource_type: 'image', transformation: [{ width: 1600, height: 1600, crop: 'limit', quality: 'auto' }] },
       (err, result) => err ? reject(err) : resolve(result.secure_url)
     );
     stream.end(buffer);
   });
 }
 
-// ─── DB Init ──────────────────────────────────────────────────────────────────
+function qrSlug() {
+  // 8 url-safe chars, ~2e14 combos — plenty for personal use
+  return crypto.randomBytes(6).toString('base64url').slice(0, 8);
+}
+
+// ─── Schema ───────────────────────────────────────────────────────────────────
 async function initDB() {
+  // Clean reset per DESIGN-v2. No legacy data to migrate.
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS locations (
-      id SERIAL PRIMARY KEY,
-      name VARCHAR(255) NOT NULL,
-      type VARCHAR(50) NOT NULL CHECK (type IN ('warehouse', 'room', 'area')),
-      description TEXT,
-      shelves TEXT DEFAULT '',
-      created_at TIMESTAMP DEFAULT NOW()
-    );
+    DROP TABLE IF EXISTS items CASCADE;
+    DROP TABLE IF EXISTS containers CASCADE;
+    DROP TABLE IF EXISTS locations CASCADE;
 
-    CREATE TABLE IF NOT EXISTS containers (
-      id SERIAL PRIMARY KEY,
-      name VARCHAR(255) NOT NULL,
-      location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL,
-      shelf VARCHAR(100),
-      bin VARCHAR(100),
-      description TEXT,
-      created_at TIMESTAMP DEFAULT NOW()
+    CREATE TABLE IF NOT EXISTS entities (
+      id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      type           VARCHAR(20) NOT NULL CHECK (type IN
+                      ('location','area','rack','shelf','bin','item')),
+      parent_id      UUID REFERENCES entities(id) ON DELETE CASCADE,
+      name           VARCHAR(200) NOT NULL,
+      description    TEXT,
+      metadata       JSONB NOT NULL DEFAULT '{}'::jsonb,
+      barcode        VARCHAR(100),
+      qr_slug        VARCHAR(32) UNIQUE,
+      rep_photo_id   UUID,
+      sort_order     INT NOT NULL DEFAULT 0,
+      is_active      BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at     TIMESTAMPTZ
     );
+    CREATE INDEX IF NOT EXISTS idx_entities_parent  ON entities(parent_id);
+    CREATE INDEX IF NOT EXISTS idx_entities_type    ON entities(type);
+    CREATE INDEX IF NOT EXISTS idx_entities_barcode ON entities(barcode) WHERE barcode IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_entities_qr      ON entities(qr_slug) WHERE qr_slug IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_entities_active  ON entities(is_active, type);
 
-    CREATE TABLE IF NOT EXISTS items (
-      id SERIAL PRIMARY KEY,
-      name VARCHAR(255) NOT NULL,
-      description TEXT,
-      quantity INTEGER DEFAULT 1,
-      unit VARCHAR(50) DEFAULT 'each',
-      container_id INTEGER REFERENCES containers(id) ON DELETE SET NULL,
-      location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL,
-      shelf VARCHAR(100),
-      bin VARCHAR(100),
-      image_url TEXT,
-      ai_labels JSONB DEFAULT '[]',
-      barcode VARCHAR(255),
-      tags JSONB DEFAULT '[]',
-      created_at TIMESTAMP DEFAULT NOW(),
-      updated_at TIMESTAMP DEFAULT NOW()
+    CREATE TABLE IF NOT EXISTS entity_photos (
+      id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      entity_id     UUID NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+      url           TEXT NOT NULL,
+      ai_labels     TEXT[] DEFAULT '{}',
+      sort_order    INT NOT NULL DEFAULT 0,
+      uploaded_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    CREATE INDEX IF NOT EXISTS idx_entity_photos_entity ON entity_photos(entity_id);
 
-    CREATE INDEX IF NOT EXISTS idx_items_container ON items(container_id);
-    CREATE INDEX IF NOT EXISTS idx_items_location ON items(location_id);
-    CREATE INDEX IF NOT EXISTS idx_containers_location ON containers(location_id);
+    CREATE TABLE IF NOT EXISTS entity_notes (
+      id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      entity_id     UUID NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+      content       TEXT NOT NULL,
+      created_by    UUID,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at    TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_entity_notes_entity ON entity_notes(entity_id);
+
+    CREATE TABLE IF NOT EXISTS upc_cache (
+      barcode       VARCHAR(100) PRIMARY KEY,
+      source        VARCHAR(30),
+      name          TEXT,
+      description   TEXT,
+      image_url     TEXT,
+      raw           JSONB,
+      fetched_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `);
-  // Migration: add shelves column if missing
+
+  // FK for rep_photo (circular, add after both tables exist)
   await pool.query(`
     DO $$ BEGIN
-      ALTER TABLE locations ADD COLUMN IF NOT EXISTS shelves TEXT DEFAULT '';
-    EXCEPTION WHEN duplicate_column THEN NULL;
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'fk_entities_rep_photo'
+      ) THEN
+        ALTER TABLE entities ADD CONSTRAINT fk_entities_rep_photo
+          FOREIGN KEY (rep_photo_id) REFERENCES entity_photos(id) ON DELETE SET NULL;
+      END IF;
     END $$;
   `);
-  // Migration: add image_url and shelf_images to locations
+
+  // 10-photo cap trigger
   await pool.query(`
-    DO $$ BEGIN
-      ALTER TABLE locations ADD COLUMN IF NOT EXISTS image_url TEXT;
-    EXCEPTION WHEN duplicate_column THEN NULL;
-    END $$;
+    CREATE OR REPLACE FUNCTION cap_entity_photos() RETURNS TRIGGER AS $$
+    BEGIN
+      IF (SELECT COUNT(*) FROM entity_photos WHERE entity_id = NEW.entity_id) > 10 THEN
+        RAISE EXCEPTION 'Entity already has 10 photos (max)';
+      END IF;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS enforce_photo_cap ON entity_photos;
+    CREATE TRIGGER enforce_photo_cap AFTER INSERT ON entity_photos
+      FOR EACH ROW EXECUTE FUNCTION cap_entity_photos();
   `);
-  await pool.query(`
-    DO $$ BEGIN
-      ALTER TABLE locations ADD COLUMN IF NOT EXISTS shelf_images JSONB DEFAULT '{}';
-    EXCEPTION WHEN duplicate_column THEN NULL;
-    END $$;
-  `);
-  // Migration: add images JSONB column to containers
-  await pool.query(`
-    DO $$ BEGIN
-      ALTER TABLE containers ADD COLUMN IF NOT EXISTS images JSONB DEFAULT '[]';
-    EXCEPTION WHEN duplicate_column THEN NULL;
-    END $$;
-  `);
-  // Migration: convert shelf_images from single URL strings to arrays
-  await pool.query(`
-    UPDATE locations
-    SET shelf_images = (
-      SELECT COALESCE(jsonb_object_agg(key,
-        CASE
-          WHEN jsonb_typeof(value) = 'string' THEN jsonb_build_array(value)
-          WHEN jsonb_typeof(value) = 'array' THEN value
-          ELSE '[]'::jsonb
-        END
-      ), '{}'::jsonb)
-      FROM jsonb_each(COALESCE(shelf_images, '{}'::jsonb))
-    )
-    WHERE shelf_images IS NOT NULL
-      AND shelf_images != '{}'::jsonb
-      AND EXISTS (
-        SELECT 1 FROM jsonb_each(shelf_images) WHERE jsonb_typeof(value) = 'string'
-      );
-  `);
-  console.log('✅ Database initialized');
+
+  console.log('📦 ShelfSnap v2 schema ready');
 }
 
-// ─── Locations ────────────────────────────────────────────────────────────────
-app.get('/api/locations', async (req, res) => {
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+async function hydrateEntity(row) {
+  // Attach rep_photo url, photo count, child counts
+  const [photosRes, childrenRes, notesRes] = await Promise.all([
+    pool.query('SELECT id, url FROM entity_photos WHERE entity_id = $1 ORDER BY sort_order, uploaded_at', [row.id]),
+    pool.query(`SELECT type, COUNT(*)::int AS n FROM entities WHERE parent_id = $1 AND is_active GROUP BY type`, [row.id]),
+    pool.query('SELECT COUNT(*)::int AS n FROM entity_notes WHERE entity_id = $1', [row.id]),
+  ]);
+  const photos = photosRes.rows;
+  const rep = photos.find(p => p.id === row.rep_photo_id) || photos[0];
+  const childCounts = {};
+  for (const r of childrenRes.rows) childCounts[r.type] = r.n;
+  return {
+    ...row,
+    photos,
+    photo_count: photos.length,
+    rep_photo_url: rep ? rep.url : null,
+    child_counts: childCounts,
+    note_count: notesRes.rows[0].n,
+  };
+}
+
+// ─── Entity CRUD ──────────────────────────────────────────────────────────────
+app.get('/api/health', (_req, res) => res.json({ ok: true, version: 'v2' }));
+
+app.get('/api/entities', async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT l.*,
-        COALESCE(ic.item_count, 0) AS total_items,
-        COALESCE(cc.bin_count, 0) AS total_bins
-      FROM locations l
-      LEFT JOIN (
-        SELECT location_id, COUNT(*) AS item_count FROM items WHERE location_id IS NOT NULL GROUP BY location_id
-      ) ic ON ic.location_id = l.id
-      LEFT JOIN (
-        SELECT location_id, COUNT(*) AS bin_count FROM containers WHERE location_id IS NOT NULL GROUP BY location_id
-      ) cc ON cc.location_id = l.id
-      ORDER BY l.name
-    `);
-    res.json(result.rows);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/locations/:id', async (req, res) => {
-  try {
-    const locResult = await pool.query('SELECT * FROM locations WHERE id=$1', [req.params.id]);
-    if (!locResult.rows.length) return res.status(404).json({ error: 'Not found' });
-    const location = locResult.rows[0];
-
-    const [itemStats, binStats, containersResult] = await Promise.all([
-      pool.query(
-        `SELECT COALESCE(shelf, '') AS shelf, COUNT(*) AS item_count FROM items WHERE location_id=$1 GROUP BY COALESCE(shelf, '')`,
-        [req.params.id]
-      ),
-      pool.query(
-        `SELECT COALESCE(shelf, '') AS shelf, COUNT(*) AS bin_count FROM containers WHERE location_id=$1 GROUP BY COALESCE(shelf, '')`,
-        [req.params.id]
-      ),
-      pool.query(
-        `SELECT c.*, COUNT(i.id) as item_count
-         FROM containers c
-         LEFT JOIN items i ON (i.container_id = c.id OR (i.bin = c.name AND i.location_id = c.location_id))
-         WHERE c.location_id = $1
-         GROUP BY c.id
-         ORDER BY c.shelf, c.name`,
-        [req.params.id]
-      ),
-    ]);
-
-    const shelfStats = {};
-    for (const row of itemStats.rows) {
-      shelfStats[row.shelf] = { item_count: parseInt(row.item_count), bin_count: 0 };
-    }
-    for (const row of binStats.rows) {
-      if (!shelfStats[row.shelf]) shelfStats[row.shelf] = { item_count: 0, bin_count: 0 };
-      shelfStats[row.shelf].bin_count = parseInt(row.bin_count);
-    }
-
-    const total_items = itemStats.rows.reduce((sum, r) => sum + parseInt(r.item_count), 0);
-    const total_bins = binStats.rows.reduce((sum, r) => sum + parseInt(r.bin_count), 0);
-
-    res.json({
-      ...location,
-      shelf_stats: shelfStats,
-      total_items,
-      total_bins,
-      containers: containersResult.rows,
-    });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/locations', async (req, res) => {
-  const { name, type, description, shelves, image_url, shelf_images } = req.body;
-  try {
-    const result = await pool.query(
-      'INSERT INTO locations (name, type, description, shelves, image_url, shelf_images) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-      [name, type, description, shelves || '', image_url || null, JSON.stringify(shelf_images || {})]
-    );
-    res.status(201).json(result.rows[0]);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.put('/api/locations/:id', async (req, res) => {
-  const { name, type, description, shelves, image_url, shelf_images } = req.body;
-  try {
-    const result = await pool.query(
-      'UPDATE locations SET name=$1, type=$2, description=$3, shelves=$4, image_url=$5, shelf_images=$6 WHERE id=$7 RETURNING *',
-      [name, type, description, shelves || '', image_url || null, JSON.stringify(shelf_images || {}), req.params.id]
-    );
-    res.json(result.rows[0]);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/locations/:id', async (req, res) => {
-  try {
-    await pool.query('DELETE FROM locations WHERE id=$1', [req.params.id]);
-    res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// ─── Shelf Management ────────────────────────────────────────────────────────
-app.post('/api/locations/:id/shelves', async (req, res) => {
-  const { name } = req.body;
-  if (!name || !name.trim()) return res.status(400).json({ error: 'Shelf name required' });
-  const trimmed = name.trim();
-  if (trimmed.includes(',')) return res.status(400).json({ error: 'Shelf name cannot contain commas' });
-  try {
-    const loc = await pool.query('SELECT shelves FROM locations WHERE id=$1', [req.params.id]);
-    if (!loc.rows.length) return res.status(404).json({ error: 'Location not found' });
-    const existing = (loc.rows[0].shelves || '').split(',').map(s => s.trim()).filter(Boolean);
-    if (existing.includes(trimmed)) return res.status(409).json({ error: 'Shelf already exists' });
-    const updated = [...existing, trimmed].join(', ');
-    const result = await pool.query('UPDATE locations SET shelves=$1 WHERE id=$2 RETURNING *', [updated, req.params.id]);
-    res.json(result.rows[0]);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/locations/:id/shelves/:name', async (req, res) => {
-  const shelfName = decodeURIComponent(req.params.name);
-  try {
-    const loc = await pool.query('SELECT shelves FROM locations WHERE id=$1', [req.params.id]);
-    if (!loc.rows.length) return res.status(404).json({ error: 'Location not found' });
-    const existing = (loc.rows[0].shelves || '').split(',').map(s => s.trim()).filter(Boolean);
-    const filtered = existing.filter(s => s !== shelfName);
-    const updated = filtered.join(', ');
-
-    // Clear shelf references from items and containers, remove from shelves string and shelf_images
-    await Promise.all([
-      pool.query("UPDATE items SET shelf='' WHERE location_id=$1 AND shelf=$2", [req.params.id, shelfName]),
-      pool.query("UPDATE containers SET shelf='' WHERE location_id=$1 AND shelf=$2", [req.params.id, shelfName]),
-      pool.query('UPDATE locations SET shelves=$1, shelf_images = COALESCE(shelf_images, \'{}\'::jsonb) - $2 WHERE id=$3', [updated, shelfName, req.params.id]),
-    ]);
-
-    res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/locations/:id/shelves/:name/images', upload.single('image'), async (req, res) => {
-  const shelfName = decodeURIComponent(req.params.name);
-  if (!req.file) return res.status(400).json({ error: 'No image provided' });
-  if (!cloudinaryEnabled) return res.status(500).json({ error: 'Image storage not configured' });
-  try {
-    const url = await uploadToCloudinary(req.file.buffer, req.file.mimetype);
-    // Append URL to the shelf's image array within shelf_images JSONB
-    const result = await pool.query(
-      `UPDATE locations
-       SET shelf_images = jsonb_set(
-         COALESCE(shelf_images, '{}'::jsonb),
-         $1::text[],
-         COALESCE(shelf_images->$2, '[]'::jsonb) || $3::jsonb
-       )
-       WHERE id = $4 RETURNING shelf_images`,
-      ['{' + shelfName + '}', shelfName, JSON.stringify([url]), req.params.id]
-    );
-    if (!result.rows.length) return res.status(404).json({ error: 'Location not found' });
-    res.json({ image_url: url, images: result.rows[0].shelf_images[shelfName] || [] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/locations/:id/shelves/:name/images', async (req, res) => {
-  const shelfName = decodeURIComponent(req.params.name);
-  const { image_url } = req.body;
-  if (!image_url) return res.status(400).json({ error: 'image_url required' });
-  try {
-    // Remove specific URL from the shelf's image array
-    const result = await pool.query(
-      `UPDATE locations
-       SET shelf_images = jsonb_set(
-         COALESCE(shelf_images, '{}'::jsonb),
-         $1::text[],
-         COALESCE(
-           (SELECT jsonb_agg(elem)
-            FROM jsonb_array_elements(COALESCE(shelf_images->$2, '[]'::jsonb)) AS elem
-            WHERE elem #>> '{}' != $3),
-           '[]'::jsonb
-         )
-       )
-       WHERE id = $4 RETURNING shelf_images`,
-      ['{' + shelfName + '}', shelfName, image_url, req.params.id]
-    );
-    if (!result.rows.length) return res.status(404).json({ error: 'Location not found' });
-    res.json({ images: result.rows[0].shelf_images[shelfName] || [] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// ─── Containers ───────────────────────────────────────────────────────────────
-app.get('/api/containers', async (req, res) => {
-  const { location_id } = req.query;
-  try {
-    let query = `
-      SELECT c.*, l.name as location_name,
-        COUNT(i.id) as item_count
-      FROM containers c
-      LEFT JOIN locations l ON c.location_id = l.id
-      LEFT JOIN items i ON (i.container_id = c.id OR (i.bin = c.name AND i.location_id = c.location_id))
-    `;
+    const { type, parent_id, search, include_inactive } = req.query;
+    const where = [];
     const params = [];
-    if (location_id) { query += ' WHERE c.location_id = $1'; params.push(location_id); }
-    query += ' GROUP BY c.id, l.name ORDER BY c.name';
-    const result = await pool.query(query, params);
-    res.json(result.rows);
+    if (!include_inactive) where.push('is_active = TRUE');
+    if (type) { params.push(type); where.push(`type = $${params.length}`); }
+    if (parent_id === 'null' || parent_id === '') {
+      where.push('parent_id IS NULL');
+    } else if (parent_id) {
+      params.push(parent_id); where.push(`parent_id = $${params.length}`);
+    }
+    if (search) { params.push(`%${search}%`); where.push(`(name ILIKE $${params.length} OR description ILIKE $${params.length} OR barcode = $${params.length - 0})`); }
+    const sql = `SELECT * FROM entities ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY sort_order, name`;
+    const result = await pool.query(sql, params);
+    const hydrated = await Promise.all(result.rows.map(hydrateEntity));
+    res.json(hydrated);
+  } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/entities/:id', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM entities WHERE id = $1', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    const entity = await hydrateEntity(rows[0]);
+    // Also attach notes and breadcrumb path
+    const notes = await pool.query('SELECT * FROM entity_notes WHERE entity_id = $1 ORDER BY created_at DESC', [req.params.id]);
+    const path = await pool.query(`
+      WITH RECURSIVE crumbs AS (
+        SELECT id, parent_id, name, type, 0 AS depth FROM entities WHERE id = $1
+        UNION ALL
+        SELECT e.id, e.parent_id, e.name, e.type, c.depth + 1 FROM entities e JOIN crumbs c ON e.id = c.parent_id
+      )
+      SELECT id, name, type FROM crumbs ORDER BY depth DESC
+    `, [req.params.id]);
+    entity.notes = notes.rows;
+    entity.path = path.rows;
+    res.json(entity);
+  } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/entities', async (req, res) => {
+  try {
+    const { type, parent_id, name, description, metadata, barcode } = req.body;
+    if (!type || !name) return res.status(400).json({ error: 'type and name required' });
+    const { rows } = await pool.query(
+      `INSERT INTO entities (type, parent_id, name, description, metadata, barcode, qr_slug)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [type, parent_id || null, name, description || null, metadata || {}, barcode || null, qrSlug()]
+    );
+    res.status(201).json(await hydrateEntity(rows[0]));
+  } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/entities/:id', async (req, res) => {
+  try {
+    const allowed = ['name', 'description', 'metadata', 'barcode', 'parent_id', 'sort_order', 'rep_photo_id', 'is_active'];
+    const updates = [];
+    const params = [];
+    for (const k of allowed) {
+      if (k in req.body) { params.push(req.body[k]); updates.push(`${k} = $${params.length}`); }
+    }
+    if (!updates.length) return res.status(400).json({ error: 'No fields' });
+    updates.push(`updated_at = NOW()`);
+    params.push(req.params.id);
+    const { rows } = await pool.query(
+      `UPDATE entities SET ${updates.join(', ')} WHERE id = $${params.length} RETURNING *`,
+      params
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    res.json(await hydrateEntity(rows[0]));
+  } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/entities/:id', async (req, res) => {
+  try {
+    const { rows } = await pool.query('UPDATE entities SET is_active = FALSE, updated_at = NOW() WHERE id = $1 RETURNING id', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/containers', async (req, res) => {
-  const { name, location_id, shelf, bin, description } = req.body;
+// ─── Photos ───────────────────────────────────────────────────────────────────
+app.get('/api/entities/:id/photos', async (req, res) => {
   try {
-    const result = await pool.query(
-      'INSERT INTO containers (name, location_id, shelf, bin, description) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [name, location_id || null, shelf, bin, description]
-    );
-    res.status(201).json(result.rows[0]);
+    const { rows } = await pool.query('SELECT * FROM entity_photos WHERE entity_id = $1 ORDER BY sort_order, uploaded_at', [req.params.id]);
+    res.json(rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.put('/api/containers/:id', async (req, res) => {
-  const { name, location_id, shelf, bin, description } = req.body;
+app.post('/api/entities/:id/photos', upload.single('file'), async (req, res) => {
   try {
-    const result = await pool.query(
-      'UPDATE containers SET name=$1, location_id=$2, shelf=$3, bin=$4, description=$5 WHERE id=$6 RETURNING *',
-      [name, location_id || null, shelf, bin, description, req.params.id]
+    if (!cloudinaryEnabled) return res.status(503).json({ error: 'Photo upload disabled (CLOUDINARY_URL not set)' });
+    if (!req.file) return res.status(400).json({ error: 'file required' });
+    const url = await uploadToCloudinary(req.file.buffer);
+    const { rows } = await pool.query(
+      'INSERT INTO entity_photos (entity_id, url) VALUES ($1, $2) RETURNING *',
+      [req.params.id, url]
     );
-    // When a bin moves shelf/location, update all its items to match
+    // If this is the first photo, auto-star it
     await pool.query(
-      'UPDATE items SET shelf=$1, location_id=$2 WHERE container_id=$3',
-      [shelf || '', location_id || null, req.params.id]
+      `UPDATE entities SET rep_photo_id = $1 WHERE id = $2 AND rep_photo_id IS NULL`,
+      [rows[0].id, req.params.id]
     );
-    res.json(result.rows[0]);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/containers/:id', async (req, res) => {
-  const { move_to } = req.query;
-  try {
-    if (move_to) {
-      // Move items to the target container, syncing shelf/location/bin
-      const target = await pool.query('SELECT * FROM containers WHERE id=$1', [move_to]);
-      if (!target.rows.length) return res.status(400).json({ error: 'Target container not found' });
-      const t = target.rows[0];
-      await pool.query(
-        'UPDATE items SET container_id=$1, shelf=$2, bin=$3, location_id=$4 WHERE container_id=$5',
-        [t.id, t.shelf || '', t.bin || t.name || '', t.location_id, req.params.id]
-      );
-    } else {
-      // Default: clear container reference and bin from items
-      await pool.query(
-        "UPDATE items SET container_id=NULL, bin='' WHERE container_id=$1",
-        [req.params.id]
-      );
-    }
-    await pool.query('DELETE FROM containers WHERE id=$1', [req.params.id]);
-    res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/containers/:id', async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT c.*, l.name as location_name,
-        COUNT(i.id) as item_count
-      FROM containers c
-      LEFT JOIN locations l ON c.location_id = l.id
-      LEFT JOIN items i ON (i.container_id = c.id OR (i.bin = c.name AND i.location_id = c.location_id))
-      WHERE c.id = $1
-      GROUP BY c.id, l.name
-    `, [req.params.id]);
-    if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
-    res.json(result.rows[0]);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/containers/:id/images', upload.single('image'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No image provided' });
-  if (!cloudinaryEnabled) return res.status(500).json({ error: 'Image storage not configured' });
-  try {
-    const url = await uploadToCloudinary(req.file.buffer, req.file.mimetype);
-    const result = await pool.query(
-      `UPDATE containers SET images = COALESCE(images, '[]'::jsonb) || $1::jsonb WHERE id = $2 RETURNING *`,
-      [JSON.stringify([url]), req.params.id]
-    );
-    if (!result.rows.length) return res.status(404).json({ error: 'Container not found' });
-    res.json({ image_url: url, images: result.rows[0].images });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/containers/:id/images', async (req, res) => {
-  const { image_url } = req.body;
-  if (!image_url) return res.status(400).json({ error: 'image_url required' });
-  try {
-    const result = await pool.query(
-      `UPDATE containers
-       SET images = COALESCE(
-         (SELECT jsonb_agg(elem) FROM jsonb_array_elements(COALESCE(images, '[]'::jsonb)) AS elem WHERE elem #>> '{}' != $1),
-         '[]'::jsonb
-       )
-       WHERE id = $2 RETURNING *`,
-      [image_url, req.params.id]
-    );
-    if (!result.rows.length) return res.status(404).json({ error: 'Container not found' });
-    res.json({ images: result.rows[0].images });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/containers/:id/empty', async (req, res) => {
-  const { move_to } = req.body;
-  try {
-    if (move_to) {
-      const target = await pool.query('SELECT * FROM containers WHERE id=$1', [move_to]);
-      if (!target.rows.length) return res.status(400).json({ error: 'Target container not found' });
-      const t = target.rows[0];
-      await pool.query(
-        'UPDATE items SET container_id=$1, shelf=$2, bin=$3, location_id=$4 WHERE container_id=$5',
-        [t.id, t.shelf || '', t.bin || t.name || '', t.location_id, req.params.id]
-      );
-    } else {
-      await pool.query(
-        "UPDATE items SET container_id=NULL, bin='' WHERE container_id=$1",
-        [req.params.id]
-      );
-    }
-    // Clear images
-    const result = await pool.query(
-      "UPDATE containers SET images='[]'::jsonb WHERE id=$1 RETURNING *",
-      [req.params.id]
-    );
-    if (!result.rows.length) return res.status(404).json({ error: 'Container not found' });
-    res.json({ success: true, container: result.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// ─── Items ────────────────────────────────────────────────────────────────────
-app.get('/api/items', async (req, res) => {
-  const { search, container_id, location_id, shelf, bin } = req.query;
-  try {
-    let query = `
-      SELECT i.*, 
-        c.name as container_name, c.shelf as container_shelf, c.bin as container_bin,
-        l.name as location_name
-      FROM items i
-      LEFT JOIN containers c ON i.container_id = c.id
-      LEFT JOIN locations l ON i.location_id = l.id
-      WHERE 1=1
-    `;
-    const params = [];
-    let idx = 1;
-    if (search) {
-      query += ` AND (i.name ILIKE $${idx} OR i.description ILIKE $${idx} OR i.barcode = $${idx+1})`;
-      params.push(`%${search}%`, search); idx += 2;
-    }
-    if (container_id) { query += ` AND i.container_id = $${idx++}`; params.push(container_id); }
-    if (location_id) { query += ` AND (i.location_id = $${idx} OR c.location_id = $${idx})`; params.push(location_id); idx++; }
-    if (shelf) { query += ` AND (i.shelf = $${idx} OR c.shelf = $${idx})`; params.push(shelf); idx++; }
-    if (bin) { query += ` AND (i.bin = $${idx} OR c.bin = $${idx})`; params.push(bin); idx++; }
-    query += ' ORDER BY i.updated_at DESC';
-    const result = await pool.query(query, params);
-    res.json(result.rows);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/items/:id', async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT i.*, c.name as container_name, l.name as location_name
-      FROM items i
-      LEFT JOIN containers c ON i.container_id = c.id
-      LEFT JOIN locations l ON i.location_id = l.id
-      WHERE i.id = $1
-    `, [req.params.id]);
-    if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
-    res.json(result.rows[0]);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// Auto-add a new shelf to a location if it doesn't exist yet
-async function ensureShelfOnLocation(locationId, shelfName) {
-  if (!locationId || !shelfName) return;
-  const loc = await pool.query('SELECT shelves FROM locations WHERE id=$1', [locationId]);
-  if (!loc.rows.length) return;
-  const existing = (loc.rows[0].shelves || '').split(',').map(s => s.trim()).filter(Boolean);
-  if (!existing.includes(shelfName.trim())) {
-    const updated = [...existing, shelfName.trim()].join(', ');
-    await pool.query('UPDATE locations SET shelves=$1 WHERE id=$2', [updated, locationId]);
-  }
-}
-
-// Auto-create a container (bin) if it doesn't exist yet, return its id
-async function ensureBinExists(locationId, shelfName, binName) {
-  if (!locationId || !binName) return null;
-  // Check if a container already exists with this name at this location/shelf
-  const existing = await pool.query(
-    'SELECT id FROM containers WHERE location_id=$1 AND shelf=$2 AND (name=$3 OR bin=$3)',
-    [locationId, shelfName || '', binName]
-  );
-  if (existing.rows.length) return existing.rows[0].id;
-  // Auto-create the container
-  const result = await pool.query(
-    'INSERT INTO containers (name, location_id, shelf, bin) VALUES ($1, $2, $3, $4) RETURNING id',
-    [binName, locationId, shelfName || '', '']
-  );
-  return result.rows[0].id;
-}
-
-app.post('/api/items', async (req, res) => {
-  let { name, description, quantity, unit, container_id, location_id, shelf, bin, image_url, ai_labels, barcode, tags } = req.body;
-  try {
-    if (shelf && location_id) await ensureShelfOnLocation(location_id, shelf);
-    if (bin && location_id && !container_id) {
-      container_id = await ensureBinExists(location_id, shelf, bin);
-    }
-    const result = await pool.query(
-      `INSERT INTO items (name, description, quantity, unit, container_id, location_id, shelf, bin, image_url, ai_labels, barcode, tags)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-      [name, description, quantity || 1, unit || 'each', container_id || null, location_id || null,
-       shelf, bin, image_url, JSON.stringify(ai_labels || []), barcode, JSON.stringify(tags || [])]
-    );
-    res.status(201).json(result.rows[0]);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.put('/api/items/:id', async (req, res) => {
-  let { name, description, quantity, unit, container_id, location_id, shelf, bin, image_url, ai_labels, barcode, tags } = req.body;
-  try {
-    if (shelf && location_id) await ensureShelfOnLocation(location_id, shelf);
-    if (bin && location_id && !container_id) {
-      container_id = await ensureBinExists(location_id, shelf, bin);
-    }
-    const result = await pool.query(
-      `UPDATE items SET name=$1, description=$2, quantity=$3, unit=$4, container_id=$5,
-       location_id=$6, shelf=$7, bin=$8, image_url=$9, ai_labels=$10, barcode=$11, tags=$12, updated_at=NOW()
-       WHERE id=$13 RETURNING *`,
-      [name, description, quantity, unit, container_id || null, location_id || null,
-       shelf, bin, image_url, JSON.stringify(ai_labels || []), barcode, JSON.stringify(tags || []), req.params.id]
-    );
-    res.json(result.rows[0]);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/items/:id', async (req, res) => {
-  try {
-    await pool.query('DELETE FROM items WHERE id=$1', [req.params.id]);
-    res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// ─── Batch Update Items (Quick Count) ─────────────────────────────────────────
-app.patch('/api/items/batch-update', async (req, res) => {
-  const { updates } = req.body; // [{ id, quantity }, ...]
-  if (!Array.isArray(updates) || updates.length === 0) {
-    return res.status(400).json({ error: 'updates array required' });
-  }
-  try {
-    const results = [];
-    for (const { id, quantity } of updates) {
-      if (id == null || quantity == null) continue;
-      const result = await pool.query(
-        'UPDATE items SET quantity=$1, updated_at=NOW() WHERE id=$2 RETURNING *',
-        [Math.max(0, parseInt(quantity)), id]
-      );
-      if (result.rows.length) results.push(result.rows[0]);
-    }
-    res.json({ updated: results.length, items: results });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// ─── Image Upload ────────────────────────────────────────────────────────────
-app.post('/api/upload-image', upload.single('image'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No image provided' });
-  if (!cloudinaryEnabled) return res.status(500).json({ error: 'Image storage not configured' });
-  try {
-    const url = await uploadToCloudinary(req.file.buffer, req.file.mimetype);
-    res.json({ image_url: url });
+    res.status(201).json(rows[0]);
   } catch (e) {
-    res.status(500).json({ error: 'Upload failed: ' + e.message });
+    if (/Max/.test(e.message)) return res.status(400).json({ error: e.message });
+    res.status(500).json({ error: e.message });
   }
 });
 
-// ─── AI Image Analysis (via Claude) ──────────────────────────────────────────
-app.post('/api/analyze-image', upload.single('image'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No image provided' });
-  if (!process.env.ANTHROPIC_API_KEY) return res.status(500).json({ error: 'AI not configured' });
-
+app.delete('/api/entities/:id/photos/:photoId', async (req, res) => {
   try {
-    const base64 = req.file.buffer.toString('base64');
-    const mediaType = req.file.mimetype;
-
-    // Upload to Cloudinary and run AI analysis in parallel
-    const [imageUrl, aiResponse] = await Promise.all([
-      cloudinaryEnabled ? uploadToCloudinary(req.file.buffer, req.file.mimetype) : Promise.resolve(null),
-      fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': process.env.ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model: 'claude-opus-4-5',
-          max_tokens: 1024,
-          messages: [{
-            role: 'user',
-            content: [
-              { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
-              { type: 'text', text: 'Analyze this image for inventory purposes. Identify ALL distinct items visible. Respond with JSON only: { "items": [ { "name": "item name", "description": "brief description", "labels": ["tag1","tag2","tag3"], "quantity": 1 }, ... ] }. List each distinct item type separately. If you see multiples of the same item, use the quantity field.' }
-            ]
-          }]
-        })
-      })
-    ]);
-
-    const data = await aiResponse.json();
-    const text = data.content?.[0]?.text || '{}';
-    const clean = text.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(clean);
-    // Normalize to { items: [...], image_url } regardless of AI response shape
-    const items = Array.isArray(parsed) ? parsed : parsed.items || [parsed];
-    res.json({ items, image_url: imageUrl || null });
-  } catch (e) {
-    res.status(500).json({ error: 'AI analysis failed: ' + e.message });
-  }
-});
-
-// ─── Stats ────────────────────────────────────────────────────────────────────
-app.get('/api/stats', async (req, res) => {
-  try {
-    const [items, containers, locations, shelves] = await Promise.all([
-      pool.query('SELECT COUNT(*) as count, SUM(quantity) as total FROM items'),
-      pool.query('SELECT COUNT(*) as count FROM containers'),
-      pool.query('SELECT COUNT(*) as count FROM locations'),
-      pool.query(`SELECT COALESCE(SUM(array_length(regexp_split_to_array(shelves, ','), 1)), 0) as count FROM locations WHERE shelves IS NOT NULL AND shelves != ''`),
-    ]);
-    res.json({
-      items: parseInt(items.rows[0].count),
-      totalQuantity: parseInt(items.rows[0].total) || 0,
-      containers: parseInt(containers.rows[0].count),
-      locations: parseInt(locations.rows[0].count),
-      shelves: parseInt(shelves.rows[0].count) || 0,
-    });
+    await pool.query('DELETE FROM entity_photos WHERE id = $1 AND entity_id = $2', [req.params.photoId, req.params.id]);
+    res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+app.patch('/api/entities/:id/rep-photo', async (req, res) => {
+  try {
+    const { photo_id } = req.body;
+    await pool.query('UPDATE entities SET rep_photo_id = $1, updated_at = NOW() WHERE id = $2', [photo_id, req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
-// ─── Serve React Frontend (production) ───────────────────────────────────────
-if (process.env.NODE_ENV === 'production') {
-  const buildPath = path.join(__dirname, 'public');
-  app.use(express.static(buildPath));
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(buildPath, 'index.html'));
-  });
+// ─── Notes ────────────────────────────────────────────────────────────────────
+app.get('/api/entities/:id/notes', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM entity_notes WHERE entity_id = $1 ORDER BY created_at DESC', [req.params.id]);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/entities/:id/notes', async (req, res) => {
+  try {
+    const { content } = req.body;
+    if (!content?.trim()) return res.status(400).json({ error: 'content required' });
+    const { rows } = await pool.query(
+      'INSERT INTO entity_notes (entity_id, content) VALUES ($1, $2) RETURNING *',
+      [req.params.id, content.trim()]
+    );
+    res.status(201).json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/entities/:id/notes/:noteId', async (req, res) => {
+  try {
+    const { content } = req.body;
+    if (!content?.trim()) return res.status(400).json({ error: 'content required' });
+    const { rows } = await pool.query(
+      `UPDATE entity_notes SET content = $1, updated_at = NOW()
+       WHERE id = $2 AND entity_id = $3 RETURNING *`,
+      [content.trim(), req.params.noteId, req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/entities/:id/notes/:noteId', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM entity_notes WHERE id = $1 AND entity_id = $2', [req.params.noteId, req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── QR codes ─────────────────────────────────────────────────────────────────
+app.get('/api/entities/:id/qr', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT qr_slug, name, type FROM entities WHERE id = $1', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    const { qr_slug, name, type } = rows[0];
+    const url = `${process.env.PUBLIC_URL || 'https://shelfsnap.app'}/go/${qr_slug}`;
+    const size = parseInt(req.query.size, 10) || 300;
+    res.set('Content-Type', 'image/png');
+    res.set('Content-Disposition', `inline; filename="${type}-${name.replace(/[^a-z0-9]/gi, '_')}.png"`);
+    QRCode.toFileStream(res, url, { width: size, margin: 1 });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/go/:slug', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT id FROM entities WHERE qr_slug = $1 AND is_active', [req.params.slug]);
+    if (!rows[0]) return res.status(404).send('Entity not found');
+    const appUrl = process.env.APP_URL || '';
+    res.redirect(`${appUrl}/#/entities/${rows[0].id}`);
+  } catch (e) { res.status(500).send('Error'); }
+});
+
+// ─── UPC lookup ───────────────────────────────────────────────────────────────
+async function lookupOpenFoodFacts(barcode) {
+  try {
+    const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json`);
+    const d = await r.json();
+    if (d.status !== 1) return null;
+    const p = d.product || {};
+    return {
+      source: 'openfoodfacts',
+      name: p.product_name || p.product_name_en || null,
+      description: p.generic_name || p.ingredients_text || null,
+      image_url: p.image_url || p.image_front_url || null,
+      raw: p,
+    };
+  } catch { return null; }
 }
+
+app.post('/api/upc/lookup', async (req, res) => {
+  try {
+    const { barcode } = req.body;
+    if (!barcode) return res.status(400).json({ error: 'barcode required' });
+    // Cache hit?
+    const cached = await pool.query('SELECT * FROM upc_cache WHERE barcode = $1', [barcode]);
+    if (cached.rows[0] && cached.rows[0].name) return res.json(cached.rows[0]);
+    // Try Open Food Facts
+    const off = await lookupOpenFoodFacts(barcode);
+    if (off && off.name) {
+      await pool.query(
+        `INSERT INTO upc_cache (barcode, source, name, description, image_url, raw)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (barcode) DO UPDATE SET name=$3, description=$4, image_url=$5, raw=$6, fetched_at=NOW()`,
+        [barcode, off.source, off.name, off.description, off.image_url, off.raw]
+      );
+      return res.json({ barcode, ...off });
+    }
+    // Miss — store stub so we don't retry for 7 days
+    await pool.query(
+      `INSERT INTO upc_cache (barcode, source, raw) VALUES ($1, 'miss', '{}'::jsonb)
+       ON CONFLICT (barcode) DO NOTHING`,
+      [barcode]
+    );
+    res.json({ barcode, source: 'miss', name: null });
+  } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
+
+// ─── Vision analyze (stub — will wire Ollama in Phase 4c) ─────────────────────
+app.post('/api/vision/analyze', async (_req, res) => {
+  res.json({ items: [], note: 'Ollama vision integration pending — Phase 4c' });
+});
 
 // ─── Start ────────────────────────────────────────────────────────────────────
+app.get('/api/health', (_req, res) => res.json({ ok: true, version: 'v2' }));
+
 initDB().then(() => {
-  app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
-}).catch(err => {
-  console.error('Failed to init DB:', err);
-  process.exit(1);
-});
+  app.listen(PORT, () => console.log(`🚀 ShelfSnap v2 API on :${PORT}`));
+}).catch(err => { console.error('initDB failed:', err); process.exit(1); });
